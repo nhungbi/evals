@@ -51,6 +51,23 @@ def test_redteam_config_is_strategy_agnostic():
     assert "system_prompt_template" not in RedTeamConfig.model_fields
 
 
+def test_attack_run_result_to_metadata_keeps_report_fields_only():
+    pruned = [{"role": "attacker", "content": "a"}, {"role": "target", "content": "no"}]
+    result = AttackRunResult(
+        conversation=[{"role": "attacker", "content": "hi"}],
+        strategy_succeeded=True,
+        strategy_score=0.9,
+        metadata={"turns_used": 3, "backtracks": 1, "target_calls": 4},
+        pruned_branches=pruned,
+    )
+    assert result.to_metadata() == {"turns_used": 3, "backtracks": 1, "pruned_branches": pruned}
+
+
+def test_attack_run_result_to_metadata_defaults_missing_keys_to_none():
+    result = AttackRunResult(conversation=[], metadata={"turns_used": 2})
+    assert result.to_metadata() == {"turns_used": 2, "backtracks": None, "pruned_branches": []}
+
+
 def test_prompt_strategy_label_defaults_to_name():
     strategy = BUILTIN_STRATEGIES["gradual_escalation"]
     assert strategy.label == strategy.name == "gradual_escalation"

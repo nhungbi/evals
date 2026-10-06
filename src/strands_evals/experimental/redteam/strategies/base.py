@@ -35,6 +35,14 @@ class AttackRunResult:
     metadata: dict[str, Any] = field(default_factory=dict)
     pruned_branches: list[dict[str, Any]] = field(default_factory=list)
 
+    def to_metadata(self) -> dict[str, Any]:
+        """Return the run details `RedTeamReport` reads: `turns_used`, `backtracks` and `pruned_branches`."""
+        return {
+            "turns_used": self.metadata.get("turns_used"),
+            "backtracks": self.metadata.get("backtracks"),
+            "pruned_branches": self.pruned_branches,
+        }
+
 
 class AttackStrategy(ABC):
     """Base class for red team attack strategies.

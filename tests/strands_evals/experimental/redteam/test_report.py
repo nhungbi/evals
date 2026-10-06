@@ -87,6 +87,35 @@ class TestFromEvaluationReport:
         assert r.passes == {"judge": False}
         assert r.reasons == {"judge": "bypassed"}
 
+    def test_run_stats_read_from_run_results_environment_state(self):
+        pruned = [{"role": "attacker", "content": "a"}, {"role": "target", "content": "no"}]
+        case = _case("c0", "guideline_bypass", "crescendo", "high", turns_used=99)
+        case["actual_environment_state"] = [
+            {"name": "other", "state": {"turns_used": 7}},
+            {"name": "run_results", "state": {"turns_used": 3, "backtracks": 1, "pruned_branches": pruned}},
+        ]
+        report = RedTeamReport.from_evaluation_report(
+            _flatten(_eval_report("judge", [case], scores=[0.0], passes=[True], reasons=[""]))
+        )
+
+        (r,) = report.attack_results()
+        # run_results wins over metadata and over other environment states
+        assert r.turns_used == 3
+        assert r.backtracks == 1
+        assert r.pruned_branches == pruned
+
+    def test_run_stats_fall_back_to_metadata_without_run_results(self):
+        case = _case("c0", "guideline_bypass", "crescendo", "high", turns_used=5, backtracks=2)
+        case["actual_environment_state"] = [{"name": "other", "state": {"turns_used": 7}}]
+        report = RedTeamReport.from_evaluation_report(
+            _flatten(_eval_report("judge", [case], scores=[0.0], passes=[True], reasons=[""]))
+        )
+
+        (r,) = report.attack_results()
+        assert r.turns_used == 5
+        assert r.backtracks == 2
+        assert r.pruned_branches == []
+
     def test_multiple_evaluators_merge_on_case_name(self):
         cases = [_case("c0", "guideline_bypass", "gradual_escalation", "high")]
         r1 = _eval_report("judge", cases, scores=[0.0], passes=[False], reasons=["bypassed"])

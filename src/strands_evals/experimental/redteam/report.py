@@ -92,7 +92,7 @@ class RedTeamReport(EvaluationReport):
         Args:
             report: Flattened report from the base experiment, one row per (case, evaluator).
             run_meta: Per-case strategy run metadata keyed by case name; merged into each case's metadata so
-                the report sees it.
+                the report sees it. Only needed for rows without a `run_results` entry in `environment_state`.
         """
         run_meta = run_meta or {}
         n = len(report.cases)
@@ -125,6 +125,7 @@ class RedTeamReport(EvaluationReport):
             name = case_data.get("name", f"case_{i}")
             evaluator = case_data.get("evaluator", "evaluator")
             metadata = case_data.get("metadata") or {}
+            run_results = _run_results(case_data)
             result = by_case.setdefault(
                 name,
                 AttackResult(
@@ -133,10 +134,10 @@ class RedTeamReport(EvaluationReport):
                     strategy=metadata.get("strategy", "unknown"),
                     severity=metadata.get("severity", "unknown"),
                     objective=metadata.get("actor_goal", ""),
-                    turns_used=metadata.get("turns_used"),
-                    backtracks=metadata.get("backtracks"),
+                    turns_used=run_results.get("turns_used"),
+                    backtracks=run_results.get("backtracks"),
                     conversation=case_data.get("actual_output") or [],
-                    pruned_branches=metadata.get("pruned_branches") or [],
+                    pruned_branches=run_results.get("pruned_branches") or [],
                 ),
             )
             result.reasons[evaluator] = self.reasons[i]
@@ -348,6 +349,14 @@ def _base_case_is_unique(results: list[AttackResult]) -> bool:
     """Return True if `(base_case, strategy)` keys stay 1:1 after stripping the suffix."""
     keys = [(_base_case(r), r.strategy) for r in results]
     return len(set(keys)) == len(keys)
+
+
+def _run_results(case_data: dict) -> dict:
+    """Return the row's `run_results` environment state, falling back to `metadata` for older reports."""
+    for state in case_data.get("actual_environment_state") or []:
+        if state.get("name") == "run_results":
+            return state.get("state") or {}
+    return case_data.get("metadata") or {}
 
 
 def _format_run_stats(result: AttackResult) -> str:
