@@ -71,7 +71,8 @@ class RedTeamExperiment(Experiment[InputT, OutputT]):
         self._agent = agent
         self._agent_factory = agent_factory
         self._attack_strategies = attack_strategies or []
-        self._by_label = self._build_by_label(self._attack_strategies)
+        # Rejects duplicate labels: variant names and `metadata["strategy"]` are keyed by label.
+        self._build_by_label(self._attack_strategies)
         self._model = model
         # case name -> strategy run metadata; the base Experiment drops task-returned
         # metadata, so we join this onto the report ourselves.
@@ -144,6 +145,10 @@ class RedTeamExperiment(Experiment[InputT, OutputT]):
                 metadata = dict(item.metadata or {})
                 metadata["strategy"] = strategy.label
                 item.metadata = metadata
+                # Attached after the copy, so every variant shares the experiment's instance. A plain
+                # `Case` has no `strategy` field
+                if isinstance(item, RedTeamCase):
+                    item.strategy = strategy
                 expanded.append(item)
         return expanded
 
@@ -206,7 +211,6 @@ class RedTeamExperiment(Experiment[InputT, OutputT]):
             Callable[[Case[InputT, OutputT]], Any],
             _build_attacker_task(
                 self._agent,
-                self._by_label,
                 agent_factory=self._agent_factory,
                 model=self._model,
                 run_meta=self._run_meta,

@@ -1,5 +1,6 @@
 """Tests for AttackStrategy implementations."""
 
+import copy
 from unittest.mock import MagicMock, patch
 
 from strands_evals.experimental.redteam.case import RedTeamCase
@@ -60,6 +61,12 @@ def test_prompt_strategy_label_override():
     strategy = PromptStrategy("gradual_escalation", "tmpl {max_turns}", label="grad-5")
     assert strategy.name == "gradual_escalation"
     assert strategy.label == "grad-5"
+
+
+def test_deepcopy_returns_the_same_strategy():
+    """Strategies are shared across cases, so deepcopy keeps the instance (and any model it holds)."""
+    strategy = PromptStrategy("gradual_escalation", "tmpl {max_turns}")
+    assert copy.deepcopy(strategy) is strategy
 
 
 @patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
