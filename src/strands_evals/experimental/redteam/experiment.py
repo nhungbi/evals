@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
@@ -129,7 +130,8 @@ class RedTeamExperiment(Experiment[InputT, OutputT]):
         """Return a new list of (case x strategy) work items; does not mutate `self._cases`.
 
         Each item is a copy of the case named `"{case}__{label}"` and tagged with `metadata["strategy"] = label`
-        so cache keys stay unique.
+        so cache keys stay unique. Each item also gets a fresh `session_id`, so spans and logs tagged with it
+        don't mix the strategy variants of one case.
         """
         if not self._attack_strategies:
             return list(self._cases)
@@ -138,6 +140,7 @@ class RedTeamExperiment(Experiment[InputT, OutputT]):
             for strategy in self._attack_strategies:
                 item = case.model_copy(deep=True)
                 item.name = f"{case.name}__{strategy.label}"
+                item.session_id = str(uuid.uuid4())
                 metadata = dict(item.metadata or {})
                 metadata["strategy"] = strategy.label
                 item.metadata = metadata

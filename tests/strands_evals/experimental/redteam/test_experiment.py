@@ -146,6 +146,29 @@ def test_cross_product_expands_cases():
     assert sorted(captured) == ["c0__cre-10", "c0__cre-30", "c1__cre-10", "c1__cre-30"]
 
 
+def test_cross_product_gives_each_variant_its_own_session_id():
+    """Variants of one case get distinct session_ids; the base cases keep theirs."""
+    base_cases = [_case("c0"), _case("c1")]
+    base_ids = [case.session_id for case in base_cases]
+    captured: dict[str, str] = {}
+
+    def task(case):
+        captured[case.name] = case.session_id
+        return {"output": []}
+
+    exp = RedTeamExperiment(
+        cases=base_cases,
+        agent=_FakeSession(),
+        attack_strategies=[_StubStrategy(label="cre-10"), _StubStrategy(label="cre-30")],
+    )
+    exp.run_evaluations(task=task)
+
+    assert len(captured) == 4
+    assert len(set(captured.values())) == 4
+    assert set(captured.values()).isdisjoint(base_ids)
+    assert [case.session_id for case in exp.cases] == base_ids
+
+
 async def test_run_evaluations_async_returns_report():
     exp = RedTeamExperiment(
         cases=[_case()],
