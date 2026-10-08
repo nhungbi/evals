@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -91,9 +92,17 @@ class RedTeamReport(EvaluationReport):
 
         Args:
             report: Flattened report from the base experiment, one row per (case, evaluator).
-            run_meta: Per-case strategy run metadata keyed by case name; merged into each case's metadata so
-                the report sees it. Only needed for rows without a `run_results` entry in `environment_state`.
+            run_meta: Deprecated. Per-case strategy run metadata keyed by case name; merged into each case's
+                metadata so the report sees it. Return the stats as a `run_results` entry in the task's
+                `environment_state` instead.
         """
+        if run_meta is not None:
+            warnings.warn(
+                "`run_meta` is deprecated and will be removed in a future release. Return run stats as "
+                '`EnvironmentState(name="run_results", state=...)` in the task\'s `environment_state` instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
         run_meta = run_meta or {}
         n = len(report.cases)
         if not (len(report.scores) == n and len(report.test_passes) == n and len(report.reasons) == n):

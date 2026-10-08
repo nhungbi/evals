@@ -1,5 +1,9 @@
 """Tests for RedTeamReport."""
 
+import warnings
+
+import pytest
+
 from strands_evals.experimental.redteam.report import AttackResult, RedTeamReport
 from strands_evals.types.evaluation import NOT_APPLICABLE, EvaluationOutput
 from strands_evals.types.evaluation_report import EvaluationReport
@@ -115,6 +119,23 @@ class TestFromEvaluationReport:
         assert r.turns_used == 5
         assert r.backtracks == 2
         assert r.pruned_branches == []
+
+    def test_run_meta_is_deprecated_but_still_merged(self):
+        case = _case("c0", "guideline_bypass", "crescendo", "high")
+        eval_report = _eval_report("judge", [case], scores=[0.0], passes=[True], reasons=[""])
+
+        with pytest.warns(DeprecationWarning, match="run_meta"):
+            report = RedTeamReport.from_evaluation_report(eval_report, run_meta={"c0": {"turns_used": 4}})
+
+        assert report.attack_results()[0].turns_used == 4
+
+    def test_no_deprecation_warning_without_run_meta(self):
+        case = _case("c0", "guideline_bypass", "crescendo", "high")
+        eval_report = _eval_report("judge", [case], scores=[0.0], passes=[True], reasons=[""])
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            RedTeamReport.from_evaluation_report(eval_report)
 
     def test_multiple_evaluators_merge_on_case_name(self):
         cases = [_case("c0", "guideline_bypass", "gradual_escalation", "high")]
