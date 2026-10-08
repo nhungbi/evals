@@ -130,13 +130,13 @@ class SequentialBreakStrategy(AttackStrategy):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int,
+        max_turns: int | None = None,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
         goal = case.config.attack_goal
         make_judge = partial(self._build_judge, self._model or model)
-        turn_cap = min(self._max_turns, max_turns)
+        turn_cap = self._turn_cap(max_turns, own=self._max_turns)
         variants = self._variants[:turn_cap]
 
         conversation: list[dict[str, Any]] = []

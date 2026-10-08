@@ -158,7 +158,7 @@ class CrescendoStrategy(AttackStrategy):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int,
+        max_turns: int | None = None,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
@@ -168,7 +168,7 @@ class CrescendoStrategy(AttackStrategy):
         # Judge factories: each scoring/refusal call gets a fresh judge with no carryover.
         make_judge = partial(self._build_judge, resolved_model)
         make_refusal_judge = partial(self._build_refusal_judge, resolved_model)
-        turn_cap = min(self._max_turns, max_turns)
+        turn_cap = self._turn_cap(max_turns, own=self._max_turns)
 
         conversation: list[dict[str, Any]] = []
         pruned_branches: list[dict[str, Any]] = []

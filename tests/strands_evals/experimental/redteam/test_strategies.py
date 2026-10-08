@@ -2,9 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
+from strands_evals.experimental import redteam
+from strands_evals.experimental.redteam import strategies, task
 from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies import BUILTIN_STRATEGIES, PromptStrategy
-from strands_evals.experimental.redteam.strategies.base import AttackRunResult
+from strands_evals.experimental.redteam.strategies import BUILTIN_STRATEGIES, PromptStrategy, base
+from strands_evals.experimental.redteam.strategies.base import AttackRunResult, AttackStrategy
 from strands_evals.experimental.redteam.strategies.target_session import TargetCheckpoint
 from strands_evals.experimental.redteam.types import AttackGoal, RedTeamConfig
 
@@ -97,6 +99,42 @@ def test_prompt_strategy_ctor_max_turns_caps_below_ceiling(mock_simulator_cls):
     strategy.run_attack(_case(), _FakeSession(lambda _m: "r"), max_turns=50)  # ceiling 50
 
     assert mock_simulator_cls.call_args.kwargs["max_turns"] == 3
+
+
+def test_max_allowed_turns_importable_from_every_location():
+    """The constant moved to strategies/base.py; the old task.py import and the package roots still work."""
+    assert redteam.MAX_ALLOWED_TURNS is strategies.MAX_ALLOWED_TURNS is task.MAX_ALLOWED_TURNS is base.MAX_ALLOWED_TURNS
+    assert base.MAX_ALLOWED_TURNS == AttackStrategy.MAX_ALLOWED_TURNS == 50
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_run_attack_max_turns_defaults_to_ceiling(mock_simulator_cls):
+    """A custom task can omit max_turns; the strategy runs under MAX_ALLOWED_TURNS."""
+    mock_simulator_cls.return_value.has_next.return_value = False
+
+    strategy = PromptStrategy("gradual_escalation", "p {max_turns}", max_turns=100)
+    strategy.run_attack(_case(), _FakeSession(lambda _m: "r"))
+
+    assert mock_simulator_cls.call_args.kwargs["max_turns"] == base.MAX_ALLOWED_TURNS
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_run_attack_max_turns_above_ceiling_is_clamped(mock_simulator_cls):
+    mock_simulator_cls.return_value.has_next.return_value = False
+
+    strategy = PromptStrategy("gradual_escalation", "p {max_turns}", max_turns=100)
+    strategy.run_attack(_case(), _FakeSession(lambda _m: "r"), max_turns=100)
+
+    assert mock_simulator_cls.call_args.kwargs["max_turns"] == base.MAX_ALLOWED_TURNS
+
+
+def test_turn_cap_resolution():
+    strategy = BUILTIN_STRATEGIES["gradual_escalation"]
+    assert strategy._turn_cap(None) == 50
+    assert strategy._turn_cap(100) == 50
+    assert strategy._turn_cap(7) == 7
+    assert strategy._turn_cap(None, own=3) == 3
+    assert strategy._turn_cap(7, own=10) == 7
 
 
 @patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")

@@ -145,7 +145,7 @@ class GoatStrategy(AttackStrategy):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int,
+        max_turns: int | None = None,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
@@ -153,7 +153,7 @@ class GoatStrategy(AttackStrategy):
         resolved_model = self._model or model
         attacker = self._build_attacker(goal, resolved_model)
         make_judge = partial(self._build_judge, resolved_model)
-        turn_cap = min(self._max_turns, max_turns)
+        turn_cap = self._turn_cap(max_turns, own=self._max_turns)
 
         conversation: list[dict[str, Any]] = []
         attacks_used: list[str] = []

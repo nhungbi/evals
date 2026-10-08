@@ -347,7 +347,7 @@ def as_target_session(target: Agent | MultiAgentBase | TargetSession) -> TargetS
     Use this in a custom task to turn a freshly built target into a session:
 
         session = as_target_session(build_agent())
-        result = strategy.run_attack(case, session, max_turns=MAX_ALLOWED_TURNS)
+        result = strategy.run_attack(case, session)  # max_turns defaults to MAX_ALLOWED_TURNS
 
     Args:
         target: A `strands.Agent` (wrapped in `StrandsAgentSession`), a `MultiAgentBase` such as a `Graph` or

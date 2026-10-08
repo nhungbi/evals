@@ -108,11 +108,12 @@ class BadLikertJudgeStrategy(AttackStrategy):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int,
+        max_turns: int | None = None,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
         goal = case.config.attack_goal
+        max_turns = self._turn_cap(max_turns)
 
         # The payload appears at turn 2; a smaller budget would send the role-set turn and never elicit,
         # reporting succeeded=False indistinguishably from "defended".
