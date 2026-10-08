@@ -12,6 +12,7 @@ from .target_session import (
     TargetCheckpoint,
     TargetSession,
     ToolUseEntry,
+    as_target_session,
 )
 
 # Ready-made strategy instances users can pass to RedTeamExperiment(attack_strategies=[...]).
@@ -37,4 +38,5 @@ __all__ = [
     "TargetCheckpoint",
     "TargetSession",
     "ToolUseEntry",
+    "as_target_session",
 ]

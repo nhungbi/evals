@@ -115,7 +115,8 @@ strands-evals/
 │   │       │   ├── base.py                   # AttackStrategy ABC + AttackRunResult
 │   │       │   ├── _common.py                # Shared helpers
 │   │       │   ├── target_session.py         # TargetSession Protocol + StrandsAgentSession,
-│   │       │   │                             # StrandsMultiAgentSession, TargetCheckpoint, ToolUseEntry
+│   │       │   │                             # StrandsMultiAgentSession, TargetCheckpoint, ToolUseEntry,
+│   │       │   │                             # as_target_session
 │   │       │   ├── bad_likert_judge/         # BadLikertJudgeStrategy
 │   │       │   ├── crescendo/                # CrescendoStrategy + crescendo_v0 prompt
 │   │       │   ├── goat/                     # GoatStrategy + goat_v0 prompt

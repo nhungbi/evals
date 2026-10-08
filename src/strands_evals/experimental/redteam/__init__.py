@@ -16,6 +16,7 @@ from .strategies import (
     StrandsMultiAgentSession,
     TargetCheckpoint,
     TargetSession,
+    as_target_session,
 )
 from .types import RISK_CATEGORIES, AttackGoal, RedTeamConfig
 
@@ -43,4 +44,5 @@ __all__ = [
     "TargetCheckpoint",
     "TargetSession",
     "TargetSpec",
+    "as_target_session",
 ]
