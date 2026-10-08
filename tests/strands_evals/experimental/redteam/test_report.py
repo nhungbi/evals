@@ -5,6 +5,7 @@ import warnings
 import pytest
 
 from strands_evals.experimental.redteam.report import AttackResult, RedTeamReport
+from strands_evals.experimental.redteam.strategies.base import RUN_RESULTS
 from strands_evals.types.evaluation import NOT_APPLICABLE, EvaluationOutput
 from strands_evals.types.evaluation_report import EvaluationReport
 
@@ -92,21 +93,34 @@ class TestFromEvaluationReport:
         assert r.reasons == {"judge": "bypassed"}
 
     def test_run_stats_read_from_run_results_environment_state(self):
+        """The stats come from the `RUN_RESULTS` state, not same-named metadata or other states."""
         pruned = [{"role": "attacker", "content": "a"}, {"role": "target", "content": "no"}]
         case = _case("c0", "guideline_bypass", "crescendo", "high", turns_used=99)
         case["actual_environment_state"] = [
             {"name": "other", "state": {"turns_used": 7}},
-            {"name": "run_results", "state": {"turns_used": 3, "backtracks": 1, "pruned_branches": pruned}},
+            {"name": RUN_RESULTS, "state": {"turns_used": 3, "backtracks": 1, "pruned_branches": pruned}},
         ]
         report = RedTeamReport.from_evaluation_report(
             _flatten(_eval_report("judge", [case], scores=[0.0], passes=[True], reasons=[""]))
         )
 
         (r,) = report.attack_results()
-        # run_results wins over metadata and over other environment states
         assert r.turns_used == 3
         assert r.backtracks == 1
         assert r.pruned_branches == pruned
+
+    def test_non_dict_run_results_state_yields_empty_stats(self):
+        """A custom task's own non-dict state under the reserved name must not crash the report."""
+        case = _case("c0", "guideline_bypass", "crescendo", "high", turns_used=99)
+        case["actual_environment_state"] = [{"name": RUN_RESULTS, "state": [{"test": "t1", "ok": True}]}]
+        report = RedTeamReport.from_evaluation_report(
+            _flatten(_eval_report("judge", [case], scores=[0.0], passes=[True], reasons=[""]))
+        )
+
+        (r,) = report.attack_results()
+        assert r.turns_used is None
+        assert r.backtracks is None
+        assert r.pruned_branches == []
 
     def test_run_stats_fall_back_to_metadata_without_run_results(self):
         case = _case("c0", "guideline_bypass", "crescendo", "high", turns_used=5, backtracks=2)

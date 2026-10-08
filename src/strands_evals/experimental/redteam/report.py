@@ -10,6 +10,7 @@ from rich.console import Console
 
 from ...types.evaluation import EvaluationOutput
 from ...types.evaluation_report import EvaluationReport
+from .strategies.base import RUN_RESULTS
 
 _console = Console()
 
@@ -93,13 +94,14 @@ class RedTeamReport(EvaluationReport):
         Args:
             report: Flattened report from the base experiment, one row per (case, evaluator).
             run_meta: Deprecated. Per-case strategy run metadata keyed by case name; merged into each case's
-                metadata so the report sees it. Return the stats as a `run_results` entry in the task's
+                metadata so the report sees it. Return `AttackRunResult.to_environment_state()` in the task's
                 `environment_state` instead.
         """
         if run_meta is not None:
             warnings.warn(
-                "`run_meta` is deprecated and will be removed in a future release. Return run stats as "
-                '`EnvironmentState(name="run_results", state=...)` in the task\'s `environment_state` instead.',
+                "`run_meta` is deprecated and will be removed in a future release. Return "
+                "`AttackRunResult.to_environment_state()` in the task's `environment_state` instead; the run "
+                "stats are then read from the case's `actual_environment_state`, not its `metadata`.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -361,10 +363,12 @@ def _base_case_is_unique(results: list[AttackResult]) -> bool:
 
 
 def _run_results(case_data: dict) -> dict:
-    """Return the row's `run_results` environment state, falling back to `metadata` for older reports."""
+    """Return the row's `RUN_RESULTS` environment state, falling back to `metadata` for older reports."""
     for state in case_data.get("actual_environment_state") or []:
-        if state.get("name") == "run_results":
-            return state.get("state") or {}
+        if state.get("name") == RUN_RESULTS:
+            run_results = state.get("state")
+            # Custom tasks own `environment_state`; tolerate a non-dict state rather than crash the report.
+            return run_results if isinstance(run_results, dict) else {}
     return case_data.get("metadata") or {}
 
 

@@ -10,7 +10,6 @@ from strands import Agent
 from strands.models.model import Model
 from strands.multiagent.base import MultiAgentBase
 
-from ...types import EnvironmentState
 from .case import RedTeamCase
 from .strategies import AttackStrategy
 from .strategies.target_session import StrandsAgentSession, StrandsMultiAgentSession, TargetSession
@@ -36,8 +35,7 @@ def _build_attacker_task(
     The returned dict holds:
         output: The attacker/target conversation.
         trajectory: The target's tool uses.
-        environment_state: `[EnvironmentState(name="run_results", state=result.to_metadata())]`, the run
-            stats `RedTeamReport` reads.
+        environment_state: `[result.to_environment_state()]`, the run stats `RedTeamReport` reads.
 
     Args:
         agent: The shared target for sequential runs. Required when `agent_factory` is None.
@@ -149,7 +147,7 @@ def _run_attack(
         "output": result.conversation,
         # Snapshot of the trace; the next case's session.reset() clears this list in place.
         "trajectory": list(session.trace),
-        "environment_state": [EnvironmentState(name="run_results", state=result.to_metadata())],
+        "environment_state": [result.to_environment_state()],
     }
 
 

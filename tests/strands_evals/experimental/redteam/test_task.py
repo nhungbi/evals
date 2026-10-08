@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies.base import AttackRunResult, AttackStrategy
+from strands_evals.experimental.redteam.strategies.base import RUN_RESULTS, AttackRunResult, AttackStrategy
 from strands_evals.experimental.redteam.task import (
     MAX_ALLOWED_TURNS,
     _build_attacker_task,
@@ -98,7 +98,7 @@ def test_task_fn_calls_run_attack_and_maps_result():
 
 @pytest.mark.parametrize("parallel", [False, True])
 def test_task_fn_returns_run_results_in_environment_state(parallel):
-    """Both task paths return the strategy's run stats as the `run_results` environment state."""
+    """Both task paths return the strategy's run stats as the `RUN_RESULTS` environment state."""
     pruned = [{"role": "attacker", "content": "a"}, {"role": "target", "content": "no"}]
     strat = _StubStrategy(
         result=AttackRunResult(
@@ -117,8 +117,8 @@ def test_task_fn_returns_run_results_in_environment_state(parallel):
 
     (state,) = task(_case())["environment_state"]
 
-    assert state.name == "run_results"
-    assert state.state == {"turns_used": 3, "backtracks": 1, "pruned_branches": pruned}
+    assert state.name == RUN_RESULTS
+    assert state.state == {"turns_used": 3, "backtracks": 1, "target_calls": 4, "pruned_branches": pruned}
 
 
 class _RaisingStrategy(_StubStrategy):
