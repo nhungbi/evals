@@ -11,6 +11,7 @@ from strands.models.model import Model
 from strands.multiagent.base import MultiAgentBase
 
 from .case import RedTeamCase
+from .strategies import AttackStrategy
 from .strategies.target_session import StrandsAgentSession, StrandsMultiAgentSession, TargetSession
 
 logger = logging.getLogger(__name__)

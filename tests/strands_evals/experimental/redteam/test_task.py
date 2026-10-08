@@ -123,10 +123,10 @@ def test_task_fn_propagates_attack_error():
     so a replay against the same evaluation_data_store re-runs the case instead of reading it as defended."""
     run_meta: dict[str, dict] = {}
     strat = _RaisingStrategy(RuntimeError("target blew up"))
-    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"), _by_label(strat), run_meta=run_meta)
+    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"), run_meta=run_meta)
 
     with pytest.raises(RuntimeError, match="target blew up"):
-        task(_case("c0"))
+        task(_case("c0", strategy=strat))
     assert "c0" not in run_meta
 
 
