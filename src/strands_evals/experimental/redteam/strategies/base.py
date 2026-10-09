@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from strands.models.model import Model
 
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from ..case import RedTeamCase
     from .target_session import TargetSession
 
-# Hard ceiling on turns per attack. `run_attack` defaults `max_turns` to it and clamps any larger value; a
-# strategy's own ctor `max_turns` is the per-attack budget and wins when smaller.
+# Default `max_turns` for `run_attack`, and the hard ceiling the built-in task always passes. A strategy's own
+# ctor `max_turns` is its per-attack budget and wins when smaller.
 MAX_ALLOWED_TURNS = 50
 
 
@@ -47,8 +47,6 @@ class AttackStrategy(ABC):
     `snapshot`/`restore` if they backtrack).
     """
 
-    MAX_ALLOWED_TURNS: ClassVar[int] = MAX_ALLOWED_TURNS
-
     def __init__(self, *, label: str | None = None) -> None:
         """Initialize the strategy.
 
@@ -75,7 +73,7 @@ class AttackStrategy(ABC):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int | None = None,
+        max_turns: int = MAX_ALLOWED_TURNS,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
@@ -92,22 +90,13 @@ class AttackStrategy(ABC):
             case: The red team case carrying the attack goal.
             target_session: Session for invoking the target, snapshotting/restoring its state, and reading
                 its tool-use `trace`.
-            max_turns: Experiment-level ceiling; defaults to, and is clamped to, `MAX_ALLOWED_TURNS`.
-                Implementations resolve it with `self._turn_cap(max_turns, own=...)`.
+            max_turns: Experiment-level ceiling; defaults to `MAX_ALLOWED_TURNS`. Overrides should keep that
+                default so custom tasks can omit it. A strategy with its own `max_turns` should run
+                `min(self._max_turns, max_turns)`.
             model: Model for any strategy-internal LLM calls; ctor model takes precedence.
             **kwargs: Reserved for forward compatibility.
         """
         ...
-
-    def _turn_cap(self, max_turns: int | None, own: int | None = None) -> int:
-        """Resolve the turn budget for one attack.
-
-        Args:
-            max_turns: The `run_attack` ceiling; `None` means `MAX_ALLOWED_TURNS`, larger values are clamped to it.
-            own: The strategy's own ctor budget, if any; wins when smaller.
-        """
-        cap = self.MAX_ALLOWED_TURNS if max_turns is None else min(max_turns, self.MAX_ALLOWED_TURNS)
-        return cap if own is None else min(own, cap)
 
     def reset(self) -> None:  # noqa: B027
         """Per-case reset hook; no-op by default. Override only if `self` holds mutable state."""

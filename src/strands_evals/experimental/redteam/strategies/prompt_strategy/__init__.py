@@ -9,7 +9,7 @@ from strands.models.model import Model
 
 from .....simulation.actor_simulator import ActorSimulator
 from .....types.simulation import ActorProfile
-from ..base import AttackRunResult, AttackStrategy
+from ..base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 
 if TYPE_CHECKING:
     from ...case import RedTeamCase
@@ -42,12 +42,12 @@ class PromptStrategy(AttackStrategy):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int | None = None,
+        max_turns: int = MAX_ALLOWED_TURNS,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
         goal = case.config.attack_goal
-        turn_cap = self._turn_cap(max_turns, own=self._max_turns)
+        turn_cap = min(self._max_turns, max_turns)
         actor_profile = ActorProfile(
             traits=case.config.traits,
             context=goal.context,

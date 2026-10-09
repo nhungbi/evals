@@ -349,6 +349,9 @@ def as_target_session(target: Agent | MultiAgentBase | TargetSession) -> TargetS
         session = as_target_session(build_agent())
         result = strategy.run_attack(case, session)  # max_turns defaults to MAX_ALLOWED_TURNS
 
+    Build a fresh target for every case. The session's `reset()` clears only the conversation, so a target
+    shared across cases carries other state (such as `agent.state`) from one case into the next.
+
     Args:
         target: A `strands.Agent` (wrapped in `StrandsAgentSession`), a `MultiAgentBase` such as a `Graph` or
             `Swarm` (wrapped in `StrandsMultiAgentSession`), or a ready `TargetSession` (returned as is).
@@ -364,33 +367,33 @@ def as_target_session(target: Agent | MultiAgentBase | TargetSession) -> TargetS
 
 
 def _build_session(
-    agent: Agent | MultiAgentBase | TargetSession,
+    target: Agent | MultiAgentBase | TargetSession,
     *,
     baseline: Any = None,
 ) -> TargetSession:
     """Wrap an `Agent` / `MultiAgentBase`, or pass a `TargetSession` through.
 
     Args:
-        agent: The target to wrap, or a ready `TargetSession`.
+        target: The target to wrap, or a ready `TargetSession`.
         baseline: Clean snapshot the wrapped session resets to between cases. Ignored for a passed-in
             `TargetSession`. Typed `Any` because the two session types use different opaque baseline shapes.
 
     Raises:
-        TypeError: If `agent` is not an `Agent`, `MultiAgentBase`, or a structural `TargetSession` (must expose
+        TypeError: If `target` is not an `Agent`, `MultiAgentBase`, or a structural `TargetSession` (must expose
             `invoke`/`reset`/`snapshot`/`restore` and a `trace: list`).
     """
-    if isinstance(agent, Agent):
-        return StrandsAgentSession(agent, baseline=baseline)
-    if isinstance(agent, MultiAgentBase):
-        return StrandsMultiAgentSession(agent, baseline=baseline)
+    if isinstance(target, Agent):
+        return StrandsAgentSession(target, baseline=baseline)
+    if isinstance(target, MultiAgentBase):
+        return StrandsMultiAgentSession(target, baseline=baseline)
     # Structural check: TargetSession is a Protocol. The `trace: list` check is
     # load-bearing because the task runner dereferences `.trace` directly.
-    has_methods = all(callable(getattr(agent, method, None)) for method in ("invoke", "reset", "snapshot", "restore"))
-    if has_methods and isinstance(getattr(agent, "trace", None), list):
-        return agent
+    has_methods = all(callable(getattr(target, method, None)) for method in ("invoke", "reset", "snapshot", "restore"))
+    if has_methods and isinstance(getattr(target, "trace", None), list):
+        return target
     raise TypeError(
-        f"agent must be a strands.Agent, strands.multiagent.MultiAgentBase, or a TargetSession, "
-        f"got {type(agent).__name__!r}; wrap a custom target in a TargetSession so the strategy "
+        f"target must be a strands.Agent, strands.multiagent.MultiAgentBase, or a TargetSession, "
+        f"got {type(target).__name__!r}; wrap a custom target in a TargetSession so the strategy "
         "can snapshot/restore its state."
     )
 

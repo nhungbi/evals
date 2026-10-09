@@ -30,7 +30,7 @@ def _build_attacker_task(
     """Build a `task(case) -> {"output": conversation, "trajectory": tool_uses}` callable.
 
     Looks up each case's strategy by `metadata["strategy"]` and delegates the multi-turn loop to
-    `strategy.run_attack`, injecting a `TargetSession` and the strategy's `MAX_ALLOWED_TURNS` ceiling. Run metadata
+    `strategy.run_attack`, injecting a `TargetSession`. `MAX_ALLOWED_TURNS` is the hard ceiling. Run metadata
     is recorded into `run_meta` keyed by case name.
 
     Args:
@@ -147,7 +147,7 @@ def _run_attack(
     error reason (which the report classifies as errored), and skips caching the failed case.
     """
     # Passed explicitly: custom strategies written against the old contract declare `max_turns` without a default.
-    result = strategy.run_attack(case, session, max_turns=strategy.MAX_ALLOWED_TURNS, model=model)
+    result = strategy.run_attack(case, session, max_turns=MAX_ALLOWED_TURNS, model=model)
     if run_meta is not None and case.name is not None:
         run_meta[case.name] = {**result.metadata, "pruned_branches": result.pruned_branches}
     return {

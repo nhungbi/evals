@@ -341,7 +341,7 @@ class TestAsTargetSession:
             as_target_session(_NoTraceSession())
 
     def test_rejects_bare_callable(self):
-        with pytest.raises(TypeError, match="TargetSession"):
+        with pytest.raises(TypeError, match="^target must be .*TargetSession"):
             as_target_session(lambda message: "reply")
 
     def test_exported_from_package_root(self):

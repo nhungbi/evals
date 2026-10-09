@@ -22,7 +22,7 @@ from strands import Agent
 from strands.models.model import Model
 
 from ...utils import _put_model_field
-from ..base import AttackRunResult, AttackStrategy
+from ..base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 from ..target_session import _single_shot_attempts
 from . import sequentialbreak_v0
 
@@ -130,13 +130,13 @@ class SequentialBreakStrategy(AttackStrategy):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int | None = None,
+        max_turns: int = MAX_ALLOWED_TURNS,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
         goal = case.config.attack_goal
         make_judge = partial(self._build_judge, self._model or model)
-        turn_cap = self._turn_cap(max_turns, own=self._max_turns)
+        turn_cap = min(self._max_turns, max_turns)
         variants = self._variants[:turn_cap]
 
         conversation: list[dict[str, Any]] = []

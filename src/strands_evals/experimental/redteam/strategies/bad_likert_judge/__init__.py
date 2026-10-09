@@ -17,7 +17,7 @@ from strands import Agent
 from strands.models.model import Model
 
 from ...utils import _put_model_field
-from ..base import AttackRunResult, AttackStrategy
+from ..base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 from . import bad_likert_judge_v0 as blj_v0
 
 if TYPE_CHECKING:
@@ -108,12 +108,11 @@ class BadLikertJudgeStrategy(AttackStrategy):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int | None = None,
+        max_turns: int = MAX_ALLOWED_TURNS,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
         goal = case.config.attack_goal
-        max_turns = self._turn_cap(max_turns)
 
         # The payload appears at turn 2; a smaller budget would send the role-set turn and never elicit,
         # reporting succeeded=False indistinguishably from "defended".
