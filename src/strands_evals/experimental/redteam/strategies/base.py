@@ -96,15 +96,6 @@ class AttackStrategy(ABC):
     def reset(self) -> None:  # noqa: B027
         """Per-case reset hook; no-op by default. Override only if `self` holds mutable state."""
 
-    def __deepcopy__(self, memo: dict[int, Any]) -> AttackStrategy:
-        """Return `self` instead of a copy.
-
-        One instance is shared across every case in an experiment, and it may hold a `Model` that can't be
-        deep-copied (the default `BedrockModel` holds thread locks). Deep-copying a `RedTeamCase` therefore
-        keeps the same strategy.
-        """
-        return self
-
     def to_dict(self) -> dict[str, Any]:
         """Serialize the strategy's static config.
 

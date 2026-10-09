@@ -170,6 +170,30 @@ def test_cross_product_gives_each_variant_its_own_session_id():
     assert [case.session_id for case in exp.cases] == base_ids
 
 
+def test_cross_product_variant_session_id_is_stable_for_a_pinned_base():
+    """A pinned base session_id yields the same variant session_ids on every run."""
+    case = _case("c0")
+    case.session_id = "pinned-1"
+    exp = RedTeamExperiment(
+        cases=[case],
+        agent=_FakeSession(),
+        attack_strategies=[_StubStrategy(label="cre-10"), _StubStrategy(label="cre-30")],
+    )
+    runs: list[dict[str, str]] = []
+    for _ in range(2):
+        captured: dict[str, str] = {}
+
+        def task(case, captured=captured):
+            captured[case.name] = case.session_id
+            return {"output": []}
+
+        exp.run_evaluations(task=task)
+        runs.append(captured)
+
+    assert runs[0] == runs[1]
+    assert runs[0]["c0__cre-10"] != runs[0]["c0__cre-30"]
+
+
 def test_cross_product_attaches_each_variant_strategy():
     """A custom task reads `case.strategy`: the experiment's own instance, matching the variant's label."""
     strategies = [_StubStrategy(label="cre-10"), _StubStrategy(label="cre-30")]
@@ -186,7 +210,7 @@ def test_cross_product_attaches_each_variant_strategy():
 
     assert captured["c0__cre-10"] is strategies[0]
     assert captured["c0__cre-30"] is strategies[1]
-    with pytest.raises(ValueError, match="has no strategy"):
+    with pytest.raises(AttributeError, match="has no strategy"):
         _ = base_cases[0].strategy
 
 
@@ -205,6 +229,17 @@ def test_cross_product_keeps_plain_cases_working():
     exp.run_evaluations(task=task)
 
     assert captured == ["cre-10"]
+
+
+def test_default_task_rejects_plain_cases():
+    """The built-in task needs `RedTeamCase` (strategies read `case.config`), so a plain `Case` fails up front."""
+    exp = RedTeamExperiment(
+        cases=[Case(name="plain", input="hello")],
+        agent=_FakeSession(),
+        attack_strategies=[_StubStrategy(label="cre-10")],
+    )
+    with pytest.raises(TypeError, match="'plain' is a Case.*RedTeamCase.*custom `task`"):
+        exp.run_evaluations()
 
 
 async def test_run_evaluations_async_returns_report():

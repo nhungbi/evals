@@ -131,8 +131,9 @@ class RedTeamExperiment(Experiment[InputT, OutputT]):
         """Return a new list of (case x strategy) work items; does not mutate `self._cases`.
 
         Each item is a copy of the case named `"{case}__{label}"` and tagged with `metadata["strategy"] = label`
-        so cache keys stay unique. Each item also gets a fresh `session_id`, so spans and logs tagged with it
-        don't mix the strategy variants of one case.
+        so cache keys stay unique. Each item also gets its own `session_id`, derived from the base case's
+        `session_id` and the strategy label, so spans and logs tagged with it don't mix the strategy variants
+        of one case, and a pinned base `session_id` gives the same variant ids on every run.
         """
         if not self._attack_strategies:
             return list(self._cases)
@@ -141,7 +142,7 @@ class RedTeamExperiment(Experiment[InputT, OutputT]):
             for strategy in self._attack_strategies:
                 item = case.model_copy(deep=True)
                 item.name = f"{case.name}__{strategy.label}"
-                item.session_id = str(uuid.uuid4())
+                item.session_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{case.session_id}:{strategy.label}"))
                 metadata = dict(item.metadata or {})
                 metadata["strategy"] = strategy.label
                 item.metadata = metadata
@@ -207,6 +208,13 @@ class RedTeamExperiment(Experiment[InputT, OutputT]):
                 "RedTeamExperiment requires either `agent` (or `agent_factory`) at construction "
                 "or an explicit `task` argument to run_evaluations()."
             )
+        # Built-in strategies read `case.config` and the task reads `case.strategy`; both are RedTeamCase-only.
+        for case in self._cases:
+            if not isinstance(case, RedTeamCase):
+                raise TypeError(
+                    f"Case {case.name!r} is a {type(case).__name__}, but the built-in attacker task needs a "
+                    "RedTeamCase. Use RedTeamCase, or pass a custom `task` to run_evaluations()."
+                )
         return cast(
             Callable[[Case[InputT, OutputT]], Any],
             _build_attacker_task(

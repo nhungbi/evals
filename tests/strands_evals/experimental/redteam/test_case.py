@@ -40,8 +40,15 @@ def test_strategy_round_trips_through_the_setter():
 
 
 def test_missing_strategy_raises_clear_error():
-    with pytest.raises(ValueError, match="'c0' has no strategy"):
+    with pytest.raises(AttributeError, match="'c0' has no strategy"):
         _ = _case().strategy
+
+
+def test_missing_strategy_is_probeable():
+    """A custom task can probe for the strategy on a mixed case list."""
+    case = _case()
+    assert not hasattr(case, "strategy")
+    assert getattr(case, "strategy", None) is None
 
 
 def test_strategy_is_not_serialized():
@@ -52,7 +59,7 @@ def test_strategy_is_not_serialized():
 
     assert "strategy" not in dumped
     assert "_strategy" not in dumped
-    with pytest.raises(ValueError, match="has no strategy"):
+    with pytest.raises(AttributeError, match="has no strategy"):
         _ = RedTeamCase.model_validate(dumped).strategy
 
 

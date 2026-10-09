@@ -146,7 +146,7 @@ def test_task_fn_missing_strategy_raises():
         input="hello",
         config=RedTeamConfig(attack_goal=AttackGoal(risk_category="guideline_bypass", actor_goal="goal")),
     )
-    with pytest.raises(ValueError, match="'c0' has no strategy"):
+    with pytest.raises(AttributeError, match="'c0' has no strategy"):
         task(case)
 
 
