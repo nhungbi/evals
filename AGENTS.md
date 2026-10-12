@@ -23,6 +23,7 @@ When helping someone contribute, you are a guide — not a gatekeeper, not a sub
 - Failure detection and root-cause analysis (`detectors` module)
 - Chaos testing — deterministic tool failure / response corruption (`chaos` module)
 - Red-team / adversarial evaluation with strategy library (`experimental.redteam`)
+- Agent optimization — GEPA-style rewriting of instructions, skills, tool descriptions, and config fields, gated by repeated-run statistical acceptance (`optimize` module)
 - Automated experiment / test-case generation
 - Async parallel execution and per-case result caching (`EvaluationDataStore` / `LocalFileTaskResultStore`)
 - Experiment management with JSON serialization
@@ -123,6 +124,19 @@ strands-evals/
 │   │       │   └── sequentialbreak/          # SequentialBreakStrategy
 │   │       └── types/                        # AttackGoal, RedTeamConfig, RISK_CATEGORIES, Severity
 │   │
+│   ├── optimize/                             # Agent optimization (GEPA-style, gated)
+│   │   ├── README.md                         # Module quick-start, cost model, acceptance semantics
+│   │   ├── optimizer.py                      # Optimizer loop + Budget / Gate / result dataclasses
+│   │   ├── artifacts.py                      # Artifact protocol + Text/File/JsonField/Formula adapters, ArtifactSpace
+│   │   ├── candidate.py                      # Content-addressed candidate snapshots + diffs
+│   │   ├── proposer.py                       # Reflection proposer (LLM) + guardrail filtering
+│   │   ├── contrastive.py                    # ContrastiveReflectionProposer (alternative prompt)
+│   │   ├── acceptance.py                     # Paired bootstrap comparison + coverage floor
+│   │   ├── runs.py                           # Append-only run directory, lineage.jsonl, resume
+│   │   ├── rewards.py                        # RewardFunction + RewardFunctionEvaluator adapter
+│   │   ├── formulas/                         # Runtime hooks with tunable text (from harness-optimizer)
+│   │   └── prompt_templates/proposer/        # proposer_v0 + contrastive_v0 prompt constants
+│   │
 │   ├── detectors/                            # Failure detection + RCA
 │   │   ├── failure_detector.py               # detect_failures (model.stream text mode)
 │   │   ├── root_cause_analyzer.py            # analyze_root_cause (Agent + structured output)
@@ -214,6 +228,7 @@ strands-evals/
 │   ├── detectors/
 │   ├── experimental/
 │   │   └── redteam/                          # Mirrors src/strands_evals/experimental/redteam/
+│   ├── optimize/                             # Mirrors src/strands_evals/optimize/
 │   ├── simulation/
 │   ├── extractors/
 │   ├── generators/
@@ -463,6 +478,7 @@ If you are an agent opening a PR on behalf of a contributor, the human is the au
 - When editing `detectors/`, keep the three-tier RCA fallback and the `model.stream()` text-mode path for failure detection intact unless the PR explicitly targets those behaviors.
 - When editing `chaos/`, keep the `ContextVar`-based plugin dispatch and the discriminated-union effect serialization intact; `ChaosPlugin` should remain a thin reader of the active `ChaosCase`.
 - When editing `experimental/redteam/`, keep `AttackStrategy` instances stateless across cases (clear in `reset()`) and prefer extending the strategy library over modifying `RedTeamExperiment`'s cross-product loop.
+- When editing `optimize/`, keep the acceptance gate mandatory (no bypass path), the run directory append-only, and candidate ids content-addressed. Proposer guardrails (space membership, size caps, format validity, truncation) are enforced in code after the LLM call, never only in the prompt.
 
 ## Things NOT to Do
 
