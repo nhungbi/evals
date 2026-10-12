@@ -2,20 +2,36 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, Field
+from strands import Agent
 from strands.models.model import Model
 
 from ....types import EnvironmentState
+from ._common import ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT
 
 if TYPE_CHECKING:
     from ..case import RedTeamCase
     from .target_session import TargetSession
 
+logger = logging.getLogger(__name__)
+
 # Name of the task-output `environment_state` entry `RedTeamReport` reads run stats from.
 RUN_RESULTS = "redteam_run_results"
+
+# Run-stats key a strategy sets when its attacker model declined its role. The target was never fully
+# tested, so `AttackSuccessEvaluator` and `RedTeamReport` treat the attack as inconclusive, never defended.
+ATTACKER_REFUSED = "attacker_refused"
+
+
+class AttackerRefusalRating(BaseModel):
+    """Structured judge output: did the attacker decline its task?"""
+
+    is_refusal: bool = Field(description="True if the attacker declined its task instead of writing the message")
 
 
 @dataclass
@@ -107,6 +123,26 @@ class AttackStrategy(ABC):
 
     def reset(self) -> None:  # noqa: B027
         """Per-case reset hook; no-op by default. Override only if `self` holds mutable state."""
+
+    def _is_attacker_refusal(self, message: str, model: Model | str | None) -> bool:
+        """Return True if the attacker's `message` declines its role, judged by a fresh LLM judge.
+
+        Strategies with an attacker model call this on each message before sending it, and set
+        `ATTACKER_REFUSED` in their run stats when it fires: sent to the target, a refusal would read as a
+        defended target. Every message is judged, since a phrase prefilter would let a refusal without a
+        known phrase through; only the message is sent, so the call stays small.
+
+        Args:
+            message: The attacker's message, before it is sent to the target.
+            model: Model for the judge.
+        """
+        judge = Agent(model=model, system_prompt=ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT, callback_handler=None)
+        result = judge(f"# Attacker Message\n{message}", structured_output_model=AttackerRefusalRating)
+        rating = result.structured_output
+        if rating is None:
+            logger.warning("reason=<parse_failure> | refusal judge produced no structured output | keeping turn")
+            return False
+        return bool(rating.is_refusal)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the strategy's static config.

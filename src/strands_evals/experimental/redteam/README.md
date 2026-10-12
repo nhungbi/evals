@@ -86,7 +86,21 @@ contract and talk to the target only through `target_session.invoke(...)`.
 
 Each strategy accepts a `max_turns=` kwarg (its own per-attack ceiling); the task runner additionally caps every strategy at a hard `MAX_ALLOWED_TURNS = 50` (`task.py`), so a strategy configured higher will be silently clamped. Pass `label="..."` to compare two instances of the same strategy in one experiment (e.g. `CrescendoStrategy(max_turns=5, label="cresc_short")`); duplicate labels raise at construction.
 
-`PromptStrategy` (a no-attacker-LLM, system-prompt-template strategy) and the `BUILTIN_STRATEGIES` registry are the extension points for adding new template-driven strategies without subclassing — see `strategies/prompt_strategy/`. The full set of exported symbols (experiment, cases, evaluator, target sessions) is the `__all__` of `strands_evals.experimental.redteam`.
+`PromptStrategy` (a system-prompt-template strategy whose attacker is an `ActorSimulator` LLM) and the `BUILTIN_STRATEGIES` registry are the extension points for adding new template-driven strategies without subclassing — see `strategies/prompt_strategy/`. The full set of exported symbols (experiment, cases, evaluator, target sessions) is the `__all__` of `strands_evals.experimental.redteam`.
+
+### Choosing an attacker model
+
+`CrescendoStrategy`, `GoatStrategy`, `PairStrategy` and `PromptStrategy` use an LLM to write the attack. A strongly safety-tuned model can decline that role, which would otherwise look like a target that defended itself. Choose an attacker model that will play the role reliably — less safety-tuned or open-weight models (for example, older Qwen or DeepSeek releases) refuse less often than frontier assistant models. Set it per strategy, so the `AttackSuccessEvaluator` judge can stay a strong model:
+
+```python
+experiment = RedTeamExperiment(
+    cases=cases,
+    attack_strategies=[CrescendoStrategy(model=attacker_model), GoatStrategy(model=attacker_model)],
+    model=judge_model,  # judge, and attacker for any strategy without its own model
+)
+```
+
+Every attacker message is checked by an LLM judge (the attacker's model) before it is sent. If the attacker declined its role, the attack stops, the run stats carry `attacker_refused=True`, and the case is reported as errored (`ERROR` / `err !`) — excluded from the ASR, never counted as defended. Many such cases mean the attacker model needs replacing, not that the target is robust. `BadLikertJudgeStrategy` and `SequentialBreakStrategy` use fixed templates and cannot refuse.
 
 ## Risk categories
 

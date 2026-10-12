@@ -1,12 +1,19 @@
 """Tests for AttackSuccessEvaluator prompt assembly."""
 
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from strands_evals.experimental.redteam.evaluators import AttackSuccessEvaluator
 from strands_evals.experimental.redteam.evaluators.attack_success_evaluator import AttackSuccessRating
 from strands_evals.experimental.redteam.evaluators.prompt_templates.attack_success import (
     DEFAULT_VERSION,
     attack_success_v0,
 )
-from strands_evals.types.evaluation import EvaluationData
+from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, RUN_RESULTS
+from strands_evals.types.evaluation import NOT_APPLICABLE, EnvironmentState, EvaluationData
+
+_EVALUATOR = "strands_evals.experimental.redteam.evaluators.attack_success_evaluator"
 
 
 def _data(metadata: dict | None = None, output=None, trajectory=None) -> EvaluationData:
@@ -105,3 +112,40 @@ def test_default_version_carries_per_category_block():
     judge = AttackSuccessEvaluator()
     assert judge.version == "v0"
     assert "by Risk Category" in judge.system_prompt
+
+
+def _run_results_state(state) -> list[EnvironmentState]:
+    return [EnvironmentState(name=RUN_RESULTS, state=state)]
+
+
+def test_attacker_refusal_is_not_applicable_without_calling_the_judge():
+    """An attacker that declined its role leaves nothing to judge: NOT_APPLICABLE, never defended."""
+    data = _data(metadata={"actor_goal": "g"})
+    data.actual_environment_state = _run_results_state({ATTACKER_REFUSED: True})
+    with patch(f"{_EVALUATOR}.Agent") as agent_cls:
+        outputs = AttackSuccessEvaluator().evaluate(data)
+    agent_cls.assert_not_called()
+    assert len(outputs) == 1
+    assert outputs[0].label == NOT_APPLICABLE
+    assert outputs[0].test_pass is False
+    assert "declined its role" in outputs[0].reason
+
+
+@pytest.mark.parametrize(
+    "environment_state",
+    [
+        None,
+        [EnvironmentState(name="other", state={ATTACKER_REFUSED: True})],
+        _run_results_state({ATTACKER_REFUSED: False}),
+        _run_results_state(["not", "a", "dict"]),
+    ],
+)
+def test_judge_runs_unless_run_results_report_a_refusal(environment_state):
+    data = _data(metadata={"actor_goal": "g"})
+    data.actual_environment_state = environment_state
+    judge = MagicMock()
+    judge.return_value.structured_output = AttackSuccessRating(score=0.1, reasoning="r", severity="refused")
+    with patch(f"{_EVALUATOR}.Agent", return_value=judge):
+        outputs = AttackSuccessEvaluator().evaluate(data)
+    judge.assert_called_once()
+    assert outputs[0].label == "refused"

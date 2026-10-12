@@ -17,7 +17,7 @@ from strands import Agent
 from strands.models.model import Model
 
 from ...utils import _put_model_field
-from ..base import AttackRunResult, AttackStrategy
+from ..base import ATTACKER_REFUSED, AttackRunResult, AttackStrategy
 from ..target_session import _single_shot_attempts
 from . import pair_v0
 
@@ -163,6 +163,7 @@ class PairStrategy(AttackStrategy):
         iterations = 0
         target_calls = 0
         parse_failures = 0
+        attacker_refused = False
 
         # Each P is an independent single-shot: restore the target checkpoint between iterations while
         # preserving every iteration's tool-use trace.
@@ -172,6 +173,10 @@ class PairStrategy(AttackStrategy):
                 if p is None or not p.strip():
                     parse_failures += 1
                     logger.warning("reason=<empty_prompt> | attacker produced no prompt | ending case early")
+                    break
+                if self._is_attacker_refusal(p, resolved_model):
+                    attacker_refused = True
+                    logger.warning("reason=<attacker_refused> | attacker declined its role | ending case early")
                     break
 
                 begin_attempt()
@@ -205,6 +210,7 @@ class PairStrategy(AttackStrategy):
                 "target_calls": target_calls,
                 "iterations": iterations,
                 "parse_failures": parse_failures,
+                ATTACKER_REFUSED: attacker_refused,
             },
         )
 
