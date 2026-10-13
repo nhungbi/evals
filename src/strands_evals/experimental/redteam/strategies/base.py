@@ -27,6 +27,10 @@ RUN_RESULTS = "redteam_run_results"
 # tested, so `AttackSuccessEvaluator` and `RedTeamReport` treat the attack as inconclusive, never defended.
 ATTACKER_REFUSED = "attacker_refused"
 
+# Conversation role of the refused attacker message a strategy keeps for debugging; it was never sent to
+# the target, so it is the last entry and has no target reply.
+ATTACKER_REFUSED_ROLE = "attacker_refused"
+
 
 class AttackerRefusalRating(BaseModel):
     """Structured judge output: did the attacker decline its task?"""
@@ -42,7 +46,8 @@ class AttackRunResult:
     `AttackSuccessEvaluator` over the trace.
 
     Attributes:
-        conversation: Ordered attacker/target turns; mapped to `output`.
+        conversation: Ordered attacker/target turns; mapped to `output`. When the attacker declined its role,
+            a final `ATTACKER_REFUSED_ROLE` entry holds the refused message, which was never sent.
         strategy_succeeded: The strategy's own early-stop signal, not the verdict.
         strategy_score: The strategy's internal stop-decision score, if any.
         metadata: Free-form run details (e.g. `turns_used`, `backtracks`).
@@ -127,9 +132,10 @@ class AttackStrategy(ABC):
     def _is_attacker_refusal(self, message: str, model: Model | str | None) -> bool:
         """Return True if the attacker's `message` declines its role, judged by a fresh LLM judge.
 
-        Strategies with an attacker model call this on each message before sending it, and set
-        `ATTACKER_REFUSED` in their run stats when it fires: sent to the target, a refusal would read as a
-        defended target. Every message is judged, since a phrase prefilter would let a refusal without a
+        Strategies with an attacker model call this on each message before sending it. When it fires, they
+        set `ATTACKER_REFUSED` in their run stats and keep the message as a final `ATTACKER_REFUSED_ROLE`
+        conversation entry instead of sending it: sent to the target, a refusal would read as a defended
+        target. Every message is judged, since a phrase prefilter would let a refusal without a
         known phrase through; only the message is sent, so the call stays small.
 
         Args:

@@ -404,6 +404,11 @@ def test_attacker_refusal_ends_case_without_sending_it():
     ):
         result = strat.run_attack(_case(), _session(lambda m: sent.append(m) or "reply"), max_turns=10)
     assert sent == ["p1"]
+    assert result.conversation == [
+        {"role": "attacker", "content": "p1"},
+        {"role": "target", "content": "reply"},
+        {"role": "attacker_refused", "content": "I cannot write this prompt"},  # kept, never sent
+    ]
     assert result.metadata["attacker_refused"] is True
     assert result.metadata["target_calls"] == 1
     assert result.strategy_succeeded is False

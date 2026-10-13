@@ -140,7 +140,13 @@ def test_prompt_strategy_attacker_refusal_ends_case_without_sending_it(mock_simu
     result = strategy.run_attack(_case(), _FakeSession(lambda m: sent.append(m) or "target reply"), max_turns=7)
 
     assert sent == ["hello"]  # only the case input; the refusal was never sent
+    assert result.conversation == [
+        {"role": "attacker", "content": "hello"},
+        {"role": "target", "content": "target reply"},
+        {"role": "attacker_refused", "content": "I can't play this role"},  # kept for debugging
+    ]
     assert result.metadata["attacker_refused"] is True
+    assert result.metadata["turns_used"] == 1
     strategy._is_attacker_refusal.assert_called_once_with("I can't play this role", None)
 
 

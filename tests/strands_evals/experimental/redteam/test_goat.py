@@ -298,6 +298,11 @@ def test_attacker_refusal_ends_case_without_sending_it():
     session = _FakeSession(lambda m: "resp")
     result = _run(strat, _case(), session, turns=[_turn(reply="r1"), _turn(reply="I won't do this")])
     assert session.sent == ["r1"]
+    assert result.conversation == [
+        {"role": "attacker", "content": "r1"},
+        {"role": "target", "content": "resp"},
+        {"role": "attacker_refused", "content": "I won't do this"},  # kept, never sent
+    ]
     assert result.metadata["attacker_refused"] is True
     assert result.metadata["turns_used"] == 1
 

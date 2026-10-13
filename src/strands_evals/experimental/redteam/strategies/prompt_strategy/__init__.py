@@ -9,7 +9,7 @@ from strands.models.model import Model
 
 from .....simulation.actor_simulator import ActorSimulator
 from .....types.simulation import ActorProfile
-from ..base import ATTACKER_REFUSED, AttackRunResult, AttackStrategy
+from ..base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, AttackRunResult, AttackStrategy
 
 if TYPE_CHECKING:
     from ...case import RedTeamCase
@@ -91,6 +91,7 @@ class PromptStrategy(AttackStrategy):
                 break
             if self._is_attacker_refusal(attacker_message, model):
                 attacker_refused = True
+                conversation.append({"role": ATTACKER_REFUSED_ROLE, "content": attacker_message})
                 logger.warning("reason=<attacker_refused> | attacker declined its role | ending case early")
                 break
 

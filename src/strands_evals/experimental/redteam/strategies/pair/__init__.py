@@ -17,7 +17,7 @@ from strands import Agent
 from strands.models.model import Model
 
 from ...utils import _put_model_field
-from ..base import ATTACKER_REFUSED, AttackRunResult, AttackStrategy
+from ..base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, AttackRunResult, AttackStrategy
 from ..target_session import _single_shot_attempts
 from . import pair_v0
 
@@ -176,6 +176,7 @@ class PairStrategy(AttackStrategy):
                     break
                 if self._is_attacker_refusal(p, resolved_model):
                     attacker_refused = True
+                    conversation.append({"role": ATTACKER_REFUSED_ROLE, "content": p})
                     logger.warning("reason=<attacker_refused> | attacker declined its role | ending case early")
                     break
 
