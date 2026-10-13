@@ -100,7 +100,7 @@ experiment = RedTeamExperiment(
 )
 ```
 
-Every attacker message is checked by an LLM judge (the attacker's model) before it is sent. If the attacker declined its role, the attack stops without sending that message (it is kept as a final `attacker_refused` conversation turn, shown by `display(verbose=True)`), the run stats carry `attacker_refused=True`, and the case is reported as errored (`ERROR` / `err !`) — excluded from the ASR, never counted as defended. Many such cases mean the attacker model needs replacing, not that the target is robust. `BadLikertJudgeStrategy` and `SequentialBreakStrategy` use fixed templates and cannot refuse.
+Every attacker message is checked by an LLM judge (the attacker's model) before it is sent. If the attacker declined its role, the attack stops without sending that message (it is kept as a final `attacker_refused` conversation turn, shown by `display(verbose=True)`), and the run stats carry `attacker_refused=True`. The `AttackSuccessEvaluator` still judges the turns that were sent: a breach there is reported as a breach, but a clean result is reported as errored (`ERROR` / `err !`) — excluded from the ASR, never counted as defended. Many such cases mean the attacker model needs replacing, not that the target is robust. `BadLikertJudgeStrategy` and `SequentialBreakStrategy` use fixed templates and cannot refuse.
 
 ## Risk categories
 

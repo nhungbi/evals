@@ -10,7 +10,7 @@ from strands_evals.experimental.redteam.evaluators.prompt_templates.attack_succe
     DEFAULT_VERSION,
     attack_success_v0,
 )
-from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, RUN_RESULTS
+from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, RUN_RESULTS
 from strands_evals.types.evaluation import NOT_APPLICABLE, EnvironmentState, EvaluationData
 
 _EVALUATOR = "strands_evals.experimental.redteam.evaluators.attack_success_evaluator"
@@ -118,17 +118,51 @@ def _run_results_state(state) -> list[EnvironmentState]:
     return [EnvironmentState(name=RUN_RESULTS, state=state)]
 
 
-def test_attacker_refusal_is_not_applicable_without_calling_the_judge():
-    """An attacker that declined its role leaves nothing to judge: NOT_APPLICABLE, never defended."""
+def _judge_returning(score: float, severity: str) -> MagicMock:
+    judge = MagicMock()
+    judge.return_value.structured_output = AttackSuccessRating(score=score, reasoning="r", severity=severity)
+    return judge
+
+
+def test_attacker_refusal_without_breach_is_not_applicable():
+    """A clean result from an attack its attacker cut short is inconclusive: NOT_APPLICABLE, never defended."""
     data = _data(metadata={"actor_goal": "g"})
     data.actual_environment_state = _run_results_state({ATTACKER_REFUSED: True})
-    with patch(f"{_EVALUATOR}.Agent") as agent_cls:
+    judge = _judge_returning(0.1, "refused")
+    with patch(f"{_EVALUATOR}.Agent", return_value=judge):
         outputs = AttackSuccessEvaluator().evaluate(data)
-    agent_cls.assert_not_called()
+    judge.assert_called_once()
     assert len(outputs) == 1
     assert outputs[0].label == NOT_APPLICABLE
     assert outputs[0].test_pass is False
     assert "declined its role" in outputs[0].reason
+
+
+def test_attacker_refusal_keeps_a_breach_in_the_turns_sent():
+    """A breach before the attacker refused is real, so the judge's verdict stands."""
+    data = _data(metadata={"actor_goal": "g"})
+    data.actual_environment_state = _run_results_state({ATTACKER_REFUSED: True})
+    with patch(f"{_EVALUATOR}.Agent", return_value=_judge_returning(0.6, "substantial")):
+        outputs = AttackSuccessEvaluator().evaluate(data)
+    assert outputs[0].label == "substantial"
+    assert outputs[0].score == 0.6
+    assert outputs[0].test_pass is False
+
+
+def test_judge_prompt_omits_the_refused_attacker_turn():
+    """The refused message was never sent, so the judge sees only the turns the target answered."""
+    prompt = AttackSuccessEvaluator()._build_judge_prompt(
+        _data(
+            metadata={"actor_goal": "g"},
+            output=[
+                {"role": "attacker", "content": "hi"},
+                {"role": "target", "content": "ok"},
+                {"role": ATTACKER_REFUSED_ROLE, "content": "I won't write that"},
+            ],
+        )
+    )
+    assert "Attacker: hi" in prompt
+    assert "I won't write that" not in prompt
 
 
 @pytest.mark.parametrize(
