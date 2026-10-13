@@ -206,3 +206,10 @@ def test_attacker_refusal_check_parse_failure_keeps_the_turn():
     """A judge that returns no structured output is not evidence of a refusal."""
     with patch(f"{_BASE}.Agent", return_value=_refusal_judge_returning(None)):
         assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is False
+
+
+def test_attacker_refusal_check_judge_error_keeps_the_turn():
+    """A judge that raises (throttle, structured-output failure) keeps the turn instead of aborting the case."""
+    judge = MagicMock(side_effect=RuntimeError("throttled"))
+    with patch(f"{_BASE}.Agent", return_value=judge):
+        assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is False

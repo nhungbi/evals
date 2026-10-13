@@ -136,14 +136,19 @@ class AttackStrategy(ABC):
         set `ATTACKER_REFUSED` in their run stats and keep the message as a final `ATTACKER_REFUSED_ROLE`
         conversation entry instead of sending it: sent to the target, a refusal would read as a defended
         target. Every message is judged, since a phrase prefilter would let a refusal without a
-        known phrase through; only the message is sent, so the call stays small.
+        known phrase through; only the message is sent, so the call stays small. A judge that fails keeps
+        the turn rather than abort the case and lose the turns already collected.
 
         Args:
             message: The attacker's message, before it is sent to the target.
             model: Model for the judge.
         """
         judge = Agent(model=model, system_prompt=ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT, callback_handler=None)
-        result = judge(f"# Attacker Message\n{message}", structured_output_model=AttackerRefusalRating)
+        try:
+            result = judge(f"# Attacker Message\n{message}", structured_output_model=AttackerRefusalRating)
+        except Exception as e:
+            logger.warning("error=<%s> | refusal judge failed | keeping turn", e)
+            return False
         rating = result.structured_output
         if rating is None:
             logger.warning("reason=<parse_failure> | refusal judge produced no structured output | keeping turn")
