@@ -29,7 +29,8 @@ from .utils import _put_model_field
 
 _AGENT_DEPRECATION = (
     "Attaching `{name}` to RedTeamExperiment is deprecated and will be removed in a future release. "
-    "Pass `agent_factory=` to `run_evaluations()` / `run_evaluations_async()` instead."
+    "Pass `agent_factory=` to `run_evaluations()` / `run_evaluations_async()` instead. The factory must build a "
+    "new target on every call; returning the same instance only clears its messages between cases, not its state."
 )
 
 
@@ -40,7 +41,8 @@ class RedTeamExperiment(Experiment[InputT, OutputT, RedTeamReport]):
     calls once per case. The factory can return a single `strands.Agent`, a multi-agent system
     (`strands.multiagent.Graph`, `strands.multiagent.Swarm`, or any
     `strands.multiagent.base.MultiAgentBase`), or a custom `TargetSession` Protocol implementer. The
-    experiment holds no live target, so it round-trips through `to_file` / `from_file` as is.
+    factory is a run-time argument, not experiment state, so the experiment round-trips through
+    `to_file` / `from_file` as is.
 
     Example:
         ```python
@@ -54,6 +56,7 @@ class RedTeamExperiment(Experiment[InputT, OutputT, RedTeamReport]):
         ```
     """
 
+    # The run methods still rebuild via `RedTeamReport.from_evaluation_report`; see the note there.
     report_cls = RedTeamReport
 
     def __init__(
@@ -243,7 +246,7 @@ class RedTeamExperiment(Experiment[InputT, OutputT, RedTeamReport]):
         # The constructor's (deprecated) factory and agent are fallbacks for the run-time factory.
         factory = agent_factory or self._agent_factory
         if factory is None and self._agent is None:
-            raise ValueError("RedTeamExperiment needs a `task` or an `agent_factory` passed to run_evaluations().")
+            raise ValueError("RedTeamExperiment needs a `task` or an `agent_factory` passed to the run method.")
         return cast(
             Callable[[Case[InputT, OutputT]], Any],
             _build_attacker_task(

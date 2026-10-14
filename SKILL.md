@@ -384,11 +384,12 @@ from strands_evals.experimental.redteam import (
     AttackGoal, RedTeamConfig, RISK_CATEGORIES,
 )
 
-target = Agent(model=..., system_prompt=..., tools=[...])
+def agent_factory() -> Agent:
+    return Agent(model=..., system_prompt=..., tools=[...])
 
 # 1. Generate cases tailored to the target (or hand-author RedTeamCase)
 cases = AdversarialCaseGenerator(model=judge_model).generate_cases(
-    agent=target,
+    agent=agent_factory(),
     risk_categories=["guideline_bypass", "data_exfiltration"],
     num_cases=5,
 )
@@ -396,16 +397,15 @@ cases = AdversarialCaseGenerator(model=judge_model).generate_cases(
 # 2. Run case × strategy cross-product
 experiment = RedTeamExperiment(
     cases=cases,
-    agent=target,
     attack_strategies=[CrescendoStrategy(max_turns=10), PairStrategy(max_turns=8)],
     evaluators=[AttackSuccessEvaluator(model=judge_model, pass_threshold=0.3)],
     model=judge_model,
 )
-report = experiment.run_evaluations()
+report = experiment.run_evaluations(agent_factory=agent_factory)
 report.display()
 ```
 
-Targets accepted: a `strands.Agent`, a `strands.multiagent.Graph`/`Swarm` (any `MultiAgentBase`), or a custom `TargetSession` Protocol implementer. For parallel runs (`max_workers > 1`) pass `agent_factory=` instead of `agent=` — Strands clients carry non-deepcopyable state.
+Targets accepted: a `strands.Agent`, a `strands.multiagent.Graph`/`Swarm` (any `MultiAgentBase`), or a custom `TargetSession` Protocol implementer. Pass `agent_factory=` to `run_evaluations()` / `run_evaluations_async()`; it must build a new target per call (Strands clients carry non-deepcopyable state, so the experiment never copies one, and a reused instance only has its messages cleared between cases). The constructor's `agent=` / `agent_factory=` are deprecated.
 
 Built-in strategies:
 
@@ -488,7 +488,7 @@ report = await experiment.run_evaluations_async(task, max_workers=10)
 - `task` may be sync or async — async tasks require `run_evaluations_async`; passing one to `run_evaluations` raises `ValueError`.
 - `max_workers` defaults to 10; the runner caps it at `len(cases)`.
 - `TracedHandler` shares a single in-memory exporter, so it is **not** safe under `max_workers > 1`. Either run sequentially or build a per-call `TracedHandler` inside the task.
-- Red-team parallel runs must use `agent_factory=` (see Red Team section).
+- Red-team runs pass `agent_factory=` to the run method, not the constructor (see Red Team section).
 
 ## Result Caching
 
