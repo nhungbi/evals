@@ -57,8 +57,75 @@ Every case needs a unique `name`: the optimizer keys its caches and its train/ho
 
 - `result.summary()` — baseline vs best score on the held-out split, accept/reject/skip counts, spend.
 - `result.best.diff()` — the deliverable: a unified diff against your baseline artifacts.
-- `result.iterations` — per-iteration records: each proposal's rationale, diff, scores, verdict, and status (`accepted`, `rejected`, `skipped` when an earlier candidate was accepted the same iteration, or `unscored` when the budget ran out).
-- `result.lineage` — the raw append-only event log (propose / score / accept / reject / skip / resume).
+- `result.to_rows(grain)` — the run flattened into plot-ready rows (below).
+- `result.to_json(grain, path="run.json")` — the same rows serialized, written to `path` when given.
+- `result.reports(candidate_id)` — the stored `EvaluationReport`s for one candidate, the evals SDK's own report objects.
+- `result.iterations` / `result.lineage` — the structured records and the raw append-only event log, when the rows are not enough.
+
+### Rows for graphs
+
+`grain="iteration"` gives one row per loop iteration — the convergence view:
+
+| column | meaning | typical graph |
+|---|---|---|
+| `iteration` | 1-based loop index | x-axis |
+| `incumbent_train_score` / `incumbent_holdout_score` | the current best candidate's mean scores on each split | convergence curve; plot both to watch the train/holdout gap (overfitting) |
+| `rollouts_cumulative` | total rollouts spent so far | cost-vs-quality curve (`holdout` against this instead of iteration) |
+| `rollouts_spent` | rollouts this iteration | spend per iteration bars |
+| `proposals_count`, `accepted_candidate_id` | how many edits were tried, and which (if any) won | accept markers on the convergence curve |
+| `incumbent_id`, `incumbent_values` | the winning candidate and its full artifact values | annotations / joining rows to candidates |
+
+`grain="proposal"` gives one row per proposed edit — the gate's view:
+
+| column | meaning | typical graph |
+|---|---|---|
+| `holdout_score`, `train_score` | the challenger's split means (`train_score` is null under `challenger_holdout_only`) | scatter per iteration, colored by `status` |
+| `mean_diff`, `ci_low`, `ci_high`, `margin` | the paired-bootstrap verdict against the incumbent | the gate plot: `mean_diff` with CI error bars per proposal; accepted = CI entirely above the margin |
+| `status` | `accepted` / `rejected` / `skipped` (never compared: an earlier edit won the iteration) / `unscored` (budget) | color / facet |
+| `artifact_name` | which artifact the edit touched | per-artifact accept-rate bars (where the leverage is) |
+| `n_cases`, `error_rollouts` | held-out cases compared, and rollouts that crashed | gate-health panel |
+| `candidate_id`, `parent_id`, `rationale`, `values`, `diff`, `verdict_reason` | lineage and the edit itself | tooltips / drill-down |
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+iters = pd.DataFrame(result.to_rows("iteration"))
+props = pd.DataFrame(result.to_rows("proposal"))
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
+
+# 1. convergence: holdout score vs cumulative rollouts, accepts marked
+ax1.plot(iters.rollouts_cumulative, iters.incumbent_holdout_score, marker="o", label="holdout")
+ax1.plot(iters.rollouts_cumulative, iters.incumbent_train_score, marker=".", alpha=0.5, label="train")
+accepted = iters[iters.accepted_candidate_id.notna()]
+ax1.scatter(accepted.rollouts_cumulative, accepted.incumbent_holdout_score, marker="*", s=160, zorder=3)
+ax1.set_xlabel("rollouts spent"); ax1.set_ylabel("score"); ax1.legend(); ax1.set_title("convergence")
+
+# 2. the gate: every proposal's paired improvement with its confidence interval
+scored = props[props.mean_diff.notna()].reset_index()
+colors = scored.status.map({"accepted": "tab:green", "rejected": "tab:red"})
+ax2.errorbar(scored.index, scored.mean_diff,
+             yerr=[scored.mean_diff - scored.ci_low, scored.ci_high - scored.mean_diff],
+             fmt="none", ecolor=colors)
+ax2.scatter(scored.index, scored.mean_diff, c=colors)
+ax2.axhline(0, color="gray", lw=0.5)
+ax2.set_xlabel("proposal"); ax2.set_ylabel("paired improvement"); ax2.set_title("acceptance gate")
+```
+
+`grain="case"` gives one row per stored report row: exactly what each evaluator returned for each case in each scoring run, nothing averaged. Columns are the report's own fields (`case_name`, `evaluator`, `score`, `test_pass`, `applicable`, `reason`) joined with `iteration`, `candidate_id`, `status`, and `report` (the scoring-run file, e.g. `run0` or `run1.holdout`). Aggregate it however your analysis needs:
+
+```python
+cases = pd.DataFrame(result.to_rows("case"))
+incumbents = cases.merge(iters[["iteration", "incumbent_id"]],
+                         left_on="candidate_id", right_on="incumbent_id")
+per_evaluator = (incumbents[incumbents.applicable]
+                 .groupby(["iteration", "evaluator"]).score.mean().unstack())
+per_evaluator.plot(subplots=True, layout=(2, 4), figsize=(12, 5), ylim=(0, 1), legend=False,
+                   title=per_evaluator.columns.tolist())
+```
+
+The source objects behind those rows are also available directly: `result.reports(candidate_id)` returns the exact `EvaluationReport`s stored while scoring that candidate (keyed `run0`, `run1.holdout`, ...), so everything the evals SDK puts in a report — including `detailed_results` and `display()` — is one call away.
 
 The module never edits your files. Apply the diff yourself after review, and commit it with the run id in the message.
 

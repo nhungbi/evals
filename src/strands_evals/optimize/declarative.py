@@ -269,18 +269,18 @@ class TunableFactory:
 
         return bound
 
-    def build_task(self, run: Callable[..., Any]) -> Callable[[Any], Callable[[Any], Any]]:
-        """Adapt `run(agent_factory, case)` to the optimizer's `build_task` contract."""
+    def build_task(self, rollout_fn: Callable[..., Any]) -> Callable[[Any], Callable[[Any], Any]]:
+        """Adapt `rollout_fn(agent_factory, case)` to the optimizer's `build_task` contract."""
 
         def build(candidate: Any) -> Callable[[Any], Any]:
             agent_factory = self.bind(candidate)
-            if inspect.iscoroutinefunction(run):
+            if inspect.iscoroutinefunction(rollout_fn):
 
                 async def async_task(case: Any) -> Any:
-                    return await run(agent_factory, case)
+                    return await rollout_fn(agent_factory, case)
 
                 return async_task
-            return lambda case: run(agent_factory, case)
+            return lambda case: rollout_fn(agent_factory, case)
 
         return build
 

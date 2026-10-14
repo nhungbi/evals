@@ -1,7 +1,7 @@
 """The optimizer loop: greedy hill-climbing over candidates with a hard rollout budget.
 
 The optimizer does not run agents itself. The caller supplies either a `@tunable` agent factory
-plus a `run(make_agent, case)` function, or a `build_task` factory that materializes a candidate's
+plus a `rollout_fn(make_agent, case)` function, or a `build_task` factory that materializes a candidate's
 artifacts and returns a task callable in the exact shape `Experiment.run_evaluations_async`
 already accepts. Either way, scoring reuses the caller's experiment unchanged, including its
 retry policy and worker pool.
@@ -11,6 +11,7 @@ agent is too noisy to rank candidates. Task results cache per `(candidate, case,
 scored reports persist in the run directory, so resuming a crashed run re-scores nothing.
 """
 
+import json
 import logging
 import random
 import statistics
@@ -125,6 +126,7 @@ class ProposalOutcome:
     verdict: AcceptanceVerdict | None = None
     status: ProposalStatus = "proposed"
     error_rollouts: int = 0
+    values: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -135,6 +137,7 @@ class IterationRecord:
     incumbent_id: str
     incumbent_train_score: float
     incumbent_holdout_score: float
+    incumbent_values: dict[str, str] = field(default_factory=dict)
     proposals: list[ProposalOutcome] = field(default_factory=list)
     accepted_candidate_id: str | None = None
     rollouts_spent: int = 0
@@ -166,6 +169,120 @@ class OptimizationResult:
             f"{self.skipped_count} skipped | {self.rollouts_spent} rollouts | run_id {self.run_id}"
         )
 
+    def reports(self, candidate_id: str) -> dict[str, EvaluationReport]:
+        """The `EvaluationReport`s stored while scoring `candidate_id`, keyed by report name.
+
+        Keys are the report file stems (`run0`, `run1.holdout`, ...): one report per scoring run,
+        tagged with the case subset it covered. Each value is the exact `EvaluationReport` the
+        experiment returned for that run, loaded back from the run directory, so everything the
+        evals SDK puts in a report is available: per-case scores, the `evaluator` tag on every
+        row, reasons, `test_passes`, and `detailed_results`.
+        """
+        scores_dir = RunDirectory(self.run_dir).candidate_dir(candidate_id) / "scores"
+        return {
+            path.name.removesuffix(".report.json"): EvaluationReport.model_validate_json(path.read_text())
+            for path in sorted(scores_dir.glob("run*.report.json"))
+        }
+
+    def to_rows(self, grain: Literal["iteration", "proposal", "case"] = "proposal") -> list[dict[str, Any]]:
+        """Flatten the run into JSON-serializable rows, one dict per row.
+
+        `grain="iteration"` gives one row per loop iteration: the incumbent's id, scores, and
+        applied values, plus rollout spend. `grain="proposal"` gives one row per proposal: its
+        scores, the gate verdict, and the candidate's applied values. `grain="case"` gives one
+        row per stored report row: exactly what each evaluator returned for each case in each
+        scoring run (score, `evaluator` tag, reason, `test_pass`), joined with the candidate's
+        iteration and status. Nothing is averaged; aggregate however your analysis needs
+        (for example `df.groupby(["iteration", "evaluator"]).score.mean()`).
+
+        Every value is a plain string or number, so the rows serialize as-is; component values
+        are JSON strings in the candidate's own encoding.
+        """
+        if grain == "iteration":
+            rows: list[dict[str, Any]] = []
+            cumulative = 0
+            for record in self.iterations:
+                cumulative += record.rollouts_spent
+                rows.append(
+                    {
+                        "iteration": record.iteration,
+                        "incumbent_id": record.incumbent_id,
+                        "incumbent_train_score": record.incumbent_train_score,
+                        "incumbent_holdout_score": record.incumbent_holdout_score,
+                        "incumbent_values": dict(record.incumbent_values),
+                        "proposals_count": len(record.proposals),
+                        "accepted_candidate_id": record.accepted_candidate_id,
+                        "rollouts_spent": record.rollouts_spent,
+                        "rollouts_cumulative": cumulative,
+                    }
+                )
+            return rows
+        if grain == "proposal":
+            rows = []
+            for record in self.iterations:
+                for outcome in record.proposals:
+                    verdict = outcome.verdict
+                    rows.append(
+                        {
+                            "iteration": record.iteration,
+                            "candidate_id": outcome.candidate_id,
+                            "parent_id": record.incumbent_id,
+                            "artifact_name": outcome.artifact_name,
+                            "status": outcome.status,
+                            "train_score": outcome.train_score,
+                            "holdout_score": outcome.holdout_score,
+                            "mean_diff": verdict.mean_diff if verdict else None,
+                            "ci_low": verdict.ci_low if verdict else None,
+                            "ci_high": verdict.ci_high if verdict else None,
+                            "margin": verdict.margin if verdict else None,
+                            "n_cases": verdict.n_cases if verdict else None,
+                            "verdict_reason": verdict.reason if verdict else None,
+                            "error_rollouts": outcome.error_rollouts,
+                            "rationale": outcome.rationale,
+                            "values": dict(outcome.values),
+                            "diff": outcome.diff,
+                        }
+                    )
+            return rows
+        if grain == "case":
+            candidates: list[tuple[int, str, str]] = [(0, self.baseline.id, "baseline")]
+            for record in self.iterations:
+                for outcome in record.proposals:
+                    candidates.append((record.iteration, outcome.candidate_id, outcome.status))
+            rows = []
+            for iteration, candidate_id, status in candidates:
+                for report_name, report in self.reports(candidate_id).items():
+                    for i, case_row in enumerate(report.cases):
+                        detailed = report.detailed_results[i] if i < len(report.detailed_results) else []
+                        rows.append(
+                            {
+                                "iteration": iteration,
+                                "candidate_id": candidate_id,
+                                "status": status,
+                                "report": report_name,
+                                "case_name": case_row.get("name"),
+                                "evaluator": case_row.get("evaluator"),
+                                "score": report.scores[i] if i < len(report.scores) else None,
+                                "test_pass": report.test_passes[i] if i < len(report.test_passes) else None,
+                                "applicable": EvaluationReport.is_applicable(detailed),
+                                "reason": report.reasons[i] if i < len(report.reasons) else "",
+                            }
+                        )
+            return rows
+        raise ValueError(f"unknown grain {grain!r}; expected 'iteration', 'proposal', or 'case'")
+
+    def to_json(
+        self,
+        grain: Literal["iteration", "proposal", "case"] = "proposal",
+        path: str | Path | None = None,
+        indent: int = 2,
+    ) -> str:
+        """Serialize `to_rows(grain)` to a JSON string, writing it to `path` when given."""
+        payload = json.dumps(self.to_rows(grain), indent=indent, ensure_ascii=False)
+        if path is not None:
+            Path(path).write_text(payload)
+        return payload
+
 
 class Optimizer:
     """Greedy hill-climbing optimizer over an artifact space, scored by an `Experiment`.
@@ -180,8 +297,8 @@ class Optimizer:
             given.
         factory: A `tunable` construction function (decorator or `inject=` form). Its markers
             become the artifacts, and each rollout builds a fresh agent with the candidate's
-            values. Requires `run`.
-        run: Called as `run(agent_factory, case)` for each rollout, where `agent_factory` is the
+            values. Requires `rollout_fn`.
+        rollout_fn: Called as `rollout_fn(agent_factory, case)` for each rollout, where `agent_factory` is
             construction function with the candidate's values bound. Returns what an `Experiment`
             task returns. May be async.
         budget: Rollout and iteration caps. A conservative default applies when unset.
@@ -207,7 +324,7 @@ class Optimizer:
         artifacts: ArtifactSpace | Mapping[str, Artifact] | None = None,
         *,
         factory: TunableFactory | None = None,
-        run: Callable[[Callable[..., Any], Case], Any] | None = None,
+        rollout_fn: Callable[[Callable[..., Any], Case], Any] | None = None,
         budget: Budget | None = None,
         gate: Gate | None = None,
         proposer: Proposer | None = None,
@@ -221,13 +338,13 @@ class Optimizer:
     ):
         if factory is not None:
             if build_task is not None or artifacts is not None:
-                raise ValueError("pass factory and run, or build_task and artifacts, not both")
-            if run is None:
-                raise ValueError("factory needs run: the function that drives one rollout")
-            build_task = factory.build_task(run)
+                raise ValueError("pass factory and rollout_fn, or build_task and artifacts, not both")
+            if rollout_fn is None:
+                raise ValueError("factory needs rollout_fn: the function that drives one rollout")
+            build_task = factory.build_task(rollout_fn)
             artifacts = factory.artifacts()
         elif build_task is None or artifacts is None:
-            raise ValueError("pass build_task and artifacts, or factory and run")
+            raise ValueError("pass build_task and artifacts, or factory and rollout_fn")
         self.experiment = experiment
         self.build_task = build_task
         self.space = artifacts if isinstance(artifacts, ArtifactSpace) else ArtifactSpace(artifacts)
@@ -334,6 +451,7 @@ class Optimizer:
                 incumbent_id=incumbent.id,
                 incumbent_train_score=incumbent_score.mean(self.train_names),
                 incumbent_holdout_score=incumbent_score.mean(self.holdout_names),
+                incumbent_values=dict(incumbent.values),
             )
 
             records = build_reflection_records(
@@ -374,6 +492,7 @@ class Optimizer:
                     artifact_name=proposal.artifact_name,
                     rationale=proposal.rationale,
                     diff=candidate.diff(incumbent),
+                    values=dict(candidate.values),
                 )
                 if not self._can_afford(self._cost_per_candidate()) and candidate.id not in self._scores:
                     outcome.status = "unscored"

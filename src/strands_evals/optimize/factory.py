@@ -31,7 +31,7 @@ factory = tunable(create_harness, inject={
 })
 ```
 
-Both mounts return a `TunableFactory` that plugs into `Optimizer(experiment, factory=..., run=...)`.
+Both mounts return a `TunableFactory` that plugs into `Optimizer(experiment, factory=..., rollout_fn=...)`.
 """
 
 import inspect
