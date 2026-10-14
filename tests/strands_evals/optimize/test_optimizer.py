@@ -5,6 +5,10 @@ an edit that adds the phrase measurably improves the score and an unrelated edit
 No LLM is called anywhere.
 """
 
+import json
+
+import pytest
+
 from strands_evals import Case, Experiment
 from strands_evals.evaluators.deterministic import Equals
 from strands_evals.optimize import (
@@ -89,6 +93,44 @@ async def test_loop_accepts_an_improving_edit(tmp_path):
     accepted = [p for p in seen_iterations[0].proposals if p.status == "accepted"]
     assert len(accepted) == 1
     assert accepted[0].verdict is not None and accepted[0].verdict.accepted
+
+
+async def test_result_exports_serializable_rows_with_applied_values(tmp_path):
+    optimizer = make_optimizer(
+        tmp_path,
+        [[Proposal(artifact_name="instructions", new_value=MAGIC, rationale="the agent never answers 42")]],
+    )
+    result = await optimizer.run()
+
+    iteration_rows = result.to_rows("iteration")
+    assert iteration_rows[0]["iteration"] == 1
+    assert iteration_rows[0]["incumbent_values"]["instructions"]
+    assert iteration_rows[0]["rollouts_cumulative"] == result.rollouts_spent
+
+    proposal_rows = result.to_rows("proposal")
+    accepted = [r for r in proposal_rows if r["status"] == "accepted"]
+    assert len(accepted) == 1
+    assert MAGIC in accepted[0]["values"]["instructions"]
+    assert accepted[0]["parent_id"] == result.baseline.id
+    assert accepted[0]["ci_low"] is not None and accepted[0]["verdict_reason"]
+
+    out = tmp_path / "report.json"
+    payload = result.to_json("proposal", path=out)
+    assert json.loads(payload) == json.loads(out.read_text()) == proposal_rows
+
+    case_rows = result.to_rows("case")
+    stored = result.reports(result.baseline.id)
+    assert stored and all(name.startswith("run") for name in stored)
+    baseline_rows = [r for r in case_rows if r["candidate_id"] == result.baseline.id]
+    first_report = next(iter(stored.values()))
+    assert baseline_rows[0]["score"] == first_report.scores[0]
+    assert baseline_rows[0]["evaluator"] == first_report.cases[0].get("evaluator")
+    assert baseline_rows[0]["status"] == "baseline" and baseline_rows[0]["iteration"] == 0
+    assert {r["status"] for r in case_rows} >= {"baseline", "accepted"}
+    json.dumps(case_rows)  # every row stays JSON-serializable
+
+    with pytest.raises(ValueError, match="unknown grain"):
+        result.to_rows("run")
 
 
 async def test_loop_rejects_an_edit_that_changes_nothing_measurable(tmp_path):
@@ -207,8 +249,6 @@ async def test_error_rollouts_are_excluded_not_scored_zero(tmp_path):
 
 
 def test_optimizer_rejects_unnamed_or_duplicate_cases(tmp_path):
-    import pytest
-
     space = ArtifactSpace(instructions=TextArtifact("x"))
 
     unnamed = Experiment(cases=[Case[str, str](input="q")], evaluators=[Equals()])

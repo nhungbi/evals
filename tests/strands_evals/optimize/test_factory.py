@@ -149,16 +149,16 @@ def make_experiment():
 
 @pytest.mark.parametrize("use_async_run", [False, True])
 async def test_optimizer_runs_a_factory_with_a_run_function(tmp_path, use_async_run):
-    def run(agent_factory, case):
+    def rollout(agent_factory, case):
         return {"output": agent_factory()}
 
-    async def async_run(agent_factory, case):
+    async def async_rollout(agent_factory, case):
         return {"output": agent_factory()}
 
     optimizer = Optimizer(
         make_experiment(),
         factory=answer_factory,
-        run=async_run if use_async_run else run,
+        rollout_fn=async_rollout if use_async_run else rollout,
         budget=Budget(max_rollouts=200),
         gate=Gate(runs_per_candidate=1),
         proposer=ScriptedProposer([[Proposal(artifact_name="style", new_value="precise", rationale="be exact")]]),
@@ -177,9 +177,11 @@ async def test_optimizer_runs_a_factory_with_a_run_function(tmp_path, use_async_
 def test_optimizer_requires_one_complete_form(tmp_path):
     experiment = make_experiment()
 
-    with pytest.raises(ValueError, match="factory needs run"):
+    with pytest.raises(ValueError, match="factory needs rollout_fn"):
         Optimizer(experiment, factory=answer_factory, base_dir=tmp_path)
     with pytest.raises(ValueError, match="not both"):
-        Optimizer(experiment, lambda candidate: None, factory=answer_factory, run=lambda f, c: None, base_dir=tmp_path)
+        Optimizer(
+            experiment, lambda candidate: None, factory=answer_factory, rollout_fn=lambda f, c: None, base_dir=tmp_path
+        )
     with pytest.raises(ValueError, match="pass build_task and artifacts"):
         Optimizer(experiment, base_dir=tmp_path)
