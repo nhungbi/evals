@@ -133,6 +133,7 @@ strands-evals/
 │   │   ├── contrastive.py                    # ContrastiveReflectionProposer (alternative prompt)
 │   │   ├── acceptance.py                     # Paired bootstrap comparison + coverage floor
 │   │   ├── frontier.py                       # Pareto frontier: case leaders, dominance, parent sampling
+│   │   ├── merge.py                          # Knob-wise merge of two frontier members (GEPA crossover)
 │   │   ├── runs.py                           # Append-only run directory, lineage.jsonl, resume
 │   │   ├── rewards.py                        # RewardFunction + RewardFunctionEvaluator adapter
 │   │   ├── formulas/                         # Runtime hooks with tunable text (from harness-optimizer)

@@ -38,6 +38,7 @@ from .artifacts import Artifact, ArtifactSpace
 from .candidate import Candidate
 from .declarative import TunableFactory
 from .frontier import pareto_front, sample_parent
+from .merge import MergePlan, find_merge_pair
 from .proposer import Proposer, build_reflection_records
 from .runs import RunDirectory
 
@@ -87,6 +88,10 @@ class Gate:
             cases it survived.
         frontier_eps: How far below a case's best score still counts as leading that case.
             Zero means only exact ties share the lead.
+        max_merges: Most merge steps a run may take. A merge step replaces the proposer call
+            for one iteration: two frontier members that changed different knobs since their
+            latest common ancestor are combined knob by knob (see `merge.py`). Each pair is
+            merged at most once. Zero disables merging.
         challenger_holdout_only: Score challengers on the selection and held-out splits only.
             Admission reads only the selection split and the gate only the holdout, so this
             skips the training cases for every candidate that is never used as a parent. A
@@ -101,6 +106,7 @@ class Gate:
     confidence: float = 0.95
     min_coverage: float = 0.9
     frontier_eps: float = 0.0
+    max_merges: int = 5
     challenger_holdout_only: bool = False
 
 
@@ -134,6 +140,9 @@ class ProposalOutcome:
     means it joined the pool (and may be sampled as a parent), and `accepted` means it was
     admitted and also cleared the gate to become champion. An admitted proposal that challenged
     the champion and lost keeps `admitted`, with the losing `verdict` attached.
+
+    `parent_ids` lists every parent: one for an edit, two for a merge, whose `parent_id` is the
+    first of them.
     """
 
     candidate_id: str
@@ -141,6 +150,7 @@ class ProposalOutcome:
     rationale: str
     diff: str
     parent_id: str = ""
+    parent_ids: list[str] = field(default_factory=list)
     train_score: float | None = None
     selection_score: float | None = None
     holdout_score: float | None = None
@@ -155,9 +165,10 @@ class ProposalOutcome:
 class IterationRecord:
     """One loop iteration, in the order things happened. Fed to `on_iteration` as it completes.
 
-    The `incumbent_*` fields describe the champion at the start of the iteration. `parent_id` is
-    the frontier member the iteration's proposals were edited from, and `frontier` maps each
-    frontier member to the number of selection cases it led when the parent was sampled.
+    The `incumbent_*` fields describe the champion at the start of the iteration. `step` is
+    `propose` when the proposer edited one sampled parent and `merge` when two frontier members
+    were merged instead. `parent_id` is the sampled parent (or the merge's first parent), and
+    `frontier` maps each frontier member to the number of selection cases it led at selection.
     """
 
     iteration: int
@@ -165,6 +176,7 @@ class IterationRecord:
     incumbent_train_score: float
     incumbent_holdout_score: float
     incumbent_values: dict[str, str] = field(default_factory=dict)
+    step: Literal["propose", "merge"] = "propose"
     parent_id: str = ""
     frontier: dict[str, int] = field(default_factory=dict)
     proposals: list[ProposalOutcome] = field(default_factory=list)
@@ -179,7 +191,8 @@ class OptimizationResult:
     `best` is the champion: the candidate that last cleared the gate. `frontier` maps each final
     frontier member to the selection cases it leads, for inspecting the specialists the search
     kept. `accepted_count` counts champion changes and `rejected_count` counts lost champion
-    challenges; `admitted_count` and `dominated_count` count frontier admissions.
+    challenges; `admitted_count` and `dominated_count` count frontier admissions, and
+    `merge_count` counts merge steps.
     """
 
     run_id: str
@@ -195,6 +208,7 @@ class OptimizationResult:
     rejected_count: int
     admitted_count: int
     dominated_count: int
+    merge_count: int = 0
     frontier: dict[str, list[str]] = field(default_factory=dict)
 
     def summary(self) -> str:
@@ -203,7 +217,8 @@ class OptimizationResult:
             f"baseline {self.baseline_holdout_score:.2f} -> best {self.best_holdout_score:.2f} "
             f"on the held-out split ({delta:+.2f})\n"
             f"{self.accepted_count} edits accepted, {self.rejected_count} rejected, "
-            f"{self.admitted_count} admitted to the frontier, {self.dominated_count} dominated | "
+            f"{self.admitted_count} admitted to the frontier, {self.dominated_count} dominated, "
+            f"{self.merge_count} merges | "
             f"{self.rollouts_spent} rollouts | run_id {self.run_id}"
         )
 
@@ -250,6 +265,7 @@ class OptimizationResult:
                         "incumbent_train_score": record.incumbent_train_score,
                         "incumbent_holdout_score": record.incumbent_holdout_score,
                         "incumbent_values": dict(record.incumbent_values),
+                        "step": record.step,
                         "parent_id": record.parent_id,
                         "frontier_size": len(record.frontier),
                         "proposals_count": len(record.proposals),
@@ -269,6 +285,7 @@ class OptimizationResult:
                             "iteration": record.iteration,
                             "candidate_id": outcome.candidate_id,
                             "parent_id": outcome.parent_id,
+                            "parent_ids": list(outcome.parent_ids),
                             "artifact_name": outcome.artifact_name,
                             "status": outcome.status,
                             "train_score": outcome.train_score,
@@ -443,6 +460,13 @@ class Optimizer:
             )
 
         self._scores: dict[str, CandidateScore] = {}
+        # Parent ids of every pool member, for finding merge ancestors; rebuilt on resume.
+        self._parents: dict[str, tuple[str, ...]] = {}
+        self._merged_pairs: set[frozenset[str]] = {
+            frozenset(event["parent_ids"])
+            for event in self.run_directory.load_events()
+            if event.get("event") == "merge"
+        }
         self._rollouts_spent = self._replay_spend()
 
     @classmethod
@@ -486,6 +510,7 @@ class Optimizer:
         rejected_count = sum(1 for e in prior_events if e["event"] == "reject")
         admitted_count = sum(1 for e in prior_events if e["event"] == "admit")
         dominated_count = sum(1 for e in prior_events if e["event"] == "dominated")
+        merge_count = sum(1 for e in prior_events if e["event"] == "merge")
         iteration = max((e.get("iteration", 0) for e in prior_events), default=0)
 
         while True:
@@ -497,17 +522,23 @@ class Optimizer:
                 logger.info("rollouts_spent=<%d> | budget exhausted, stopping", self._rollouts_spent)
                 break
 
-            # Selection: sample one frontier member, weighted by the selection cases it leads.
+            # Selection: merge two complementary frontier members when an untried pair exists and
+            # the run has merges left; otherwise sample one member, weighted by the cases it leads.
             front = self._frontier(pool)
-            parent = pool[sample_parent(front, self._parent_rng(iteration))] if front else champion
-            if not await self._ensure_fully_scored(parent):
-                logger.info("candidate=<%s> | budget cannot cover the parent's training cases, stopping", parent.id)
-                break
+            plan = self._merge_plan(front, pool, merge_count)
+            if plan is not None:
+                parent = pool[plan.first]
+            else:
+                parent = pool[sample_parent(front, self._parent_rng(iteration))] if front else champion
+                if not await self._ensure_fully_scored(parent):
+                    logger.info("candidate=<%s> | budget cannot cover the parent's training cases, stopping", parent.id)
+                    break
             parent_score = self._scores[parent.id]
             champion_score = self._scores[champion.id]
             self.run_directory.log_event(
                 "select",
                 iteration=iteration,
+                step="merge" if plan is not None else "propose",
                 parent_id=parent.id,
                 frontier={candidate_id: sorted(cases) for candidate_id, cases in front.items()},
             )
@@ -518,23 +549,50 @@ class Optimizer:
                 incumbent_train_score=champion_score.mean(self.train_names),
                 incumbent_holdout_score=champion_score.mean(self.holdout_names),
                 incumbent_values=dict(champion.values),
+                step="merge" if plan is not None else "propose",
                 parent_id=parent.id,
                 frontier={candidate_id: len(cases) for candidate_id, cases in front.items()},
             )
 
-            records = build_reflection_records(
-                parent_score.case_rows,
-                parent_score.subset(self.train_names),
-            )
-            proposals = await self._propose_with_retry(parent, records, iteration)
-            if not proposals:
-                logger.info("iteration=<%d> | proposer returned no valid edits, stopping", iteration)
-                break
+            # Proposal: the merged candidate, or the proposer's edits of the sampled parent. Each
+            # draft is (candidate, artifact label, rationale, parent ids, candidate to diff against).
+            drafts: list[tuple[Candidate, str, str, list[str], Candidate]] = []
+            if plan is not None:
+                merge_count += 1
+                self._merged_pairs.add(frozenset((plan.first, plan.second)))
+                self.run_directory.log_event(
+                    "merge",
+                    iteration=iteration,
+                    parent_ids=[plan.first, plan.second],
+                    ancestor_id=plan.ancestor,
+                    from_first=list(plan.from_first),
+                    from_second=list(plan.from_second),
+                )
+                rationale = (
+                    f"merge of {plan.first} ({', '.join(plan.from_first)}) and "
+                    f"{plan.second} ({', '.join(plan.from_second)}) against ancestor {plan.ancestor}"
+                )
+                merged = Candidate(
+                    plan.values, parent_id=plan.first, rationale=rationale, space=self.space, baseline=baseline
+                )
+                label = "+".join(sorted(plan.from_first + plan.from_second))
+                drafts.append((merged, label, rationale, [plan.first, plan.second], pool[plan.ancestor]))
+            else:
+                records = build_reflection_records(
+                    parent_score.case_rows,
+                    parent_score.subset(self.train_names),
+                )
+                proposals = await self._propose_with_retry(parent, records, iteration)
+                if not proposals:
+                    logger.info("iteration=<%d> | proposer returned no valid edits, stopping", iteration)
+                    break
+                for proposal in proposals:
+                    edited = parent.mutate(proposal.artifact_name, proposal.new_value, rationale=proposal.rationale)
+                    drafts.append((edited, proposal.artifact_name, proposal.rationale, [parent.id], parent))
 
             outcomes: list[ProposalOutcome] = []
             candidates_by_id: dict[str, Candidate] = {}
-            for proposal in proposals:
-                candidate = parent.mutate(proposal.artifact_name, proposal.new_value, rationale=proposal.rationale)
+            for candidate, artifact_name, rationale, parent_ids, diff_base in drafts:
                 if candidate.id in candidates_by_id or candidate.id in pool:
                     logger.info("candidate=<%s> | duplicate proposal content, dropped", candidate.id)
                     continue
@@ -542,25 +600,28 @@ class Optimizer:
                 self.run_directory.save_values(candidate.id, candidate.values)
                 self.run_directory.write_manifest(
                     candidate.id,
-                    parent_id=parent.id,
-                    rationale=proposal.rationale,
+                    parent_id=parent_ids[0],
+                    parent_ids=parent_ids if len(parent_ids) > 1 else None,
+                    rationale=rationale,
                     values=candidate.values,
                     status="proposed",
                 )
                 self.run_directory.log_event(
                     "propose",
                     candidate_id=candidate.id,
-                    parent_id=parent.id,
-                    artifact=proposal.artifact_name,
-                    rationale=proposal.rationale,
+                    parent_id=parent_ids[0],
+                    parent_ids=parent_ids,
+                    artifact=artifact_name,
+                    rationale=rationale,
                     iteration=iteration,
                 )
                 outcome = ProposalOutcome(
                     candidate_id=candidate.id,
-                    artifact_name=proposal.artifact_name,
-                    rationale=proposal.rationale,
-                    diff=candidate.diff(parent),
-                    parent_id=parent.id,
+                    artifact_name=artifact_name,
+                    rationale=rationale,
+                    diff=candidate.diff(diff_base),
+                    parent_id=parent_ids[0],
+                    parent_ids=list(parent_ids),
                     values=dict(candidate.values),
                 )
                 if not self._can_afford(self._cost_per_candidate()) and candidate.id not in self._scores:
@@ -589,19 +650,21 @@ class Optimizer:
                     dominated_count += 1
                     self.run_directory.set_status(outcome.candidate_id, "dominated")
                     self.run_directory.log_event(
-                        "dominated", candidate_id=outcome.candidate_id, parent_id=parent.id, iteration=iteration
+                        "dominated", candidate_id=outcome.candidate_id, parent_id=outcome.parent_id, iteration=iteration
                     )
                     continue
                 outcome.status = "admitted"
                 outcome.cases_led = cases_led
                 admitted_count += 1
                 pool[outcome.candidate_id] = self._with_context(candidates_by_id[outcome.candidate_id])
+                self._parents[outcome.candidate_id] = tuple(outcome.parent_ids)
                 admitted.append(outcome)
                 self.run_directory.set_status(outcome.candidate_id, "admitted")
                 self.run_directory.log_event(
                     "admit",
                     candidate_id=outcome.candidate_id,
-                    parent_id=parent.id,
+                    parent_id=outcome.parent_id,
+                    parent_ids=outcome.parent_ids,
                     iteration=iteration,
                     cases_led=cases_led,
                 )
@@ -669,6 +732,7 @@ class Optimizer:
             rejected_count=rejected_count,
             admitted_count=admitted_count,
             dominated_count=dominated_count,
+            merge_count=merge_count,
             frontier={candidate_id: sorted(cases) for candidate_id, cases in self._frontier(pool).items()},
         )
 
@@ -680,6 +744,19 @@ class Optimizer:
             {candidate_id: self._scores[candidate_id].subset(self.selection_names) for candidate_id in pool},
             self.selection_names,
             self.gate.frontier_eps,
+        )
+
+    def _merge_plan(
+        self, front: Mapping[str, frozenset[str]], pool: Mapping[str, Candidate], merges_done: int
+    ) -> MergePlan | None:
+        """The next merge to run, or `None` when merging is off, used up, or no pair qualifies."""
+        if merges_done >= self.gate.max_merges or len(front) < 2:
+            return None
+        return find_merge_pair(
+            front,
+            {candidate_id: candidate.values for candidate_id, candidate in pool.items()},
+            self._parents,
+            self._merged_pairs,
         )
 
     def _parent_rng(self, iteration: int) -> random.Random:
@@ -886,6 +963,7 @@ class Optimizer:
         frontier admissions existed is still a pool member.
         """
         pool: dict[str, Candidate] = {baseline.id: baseline}
+        self._parents = {baseline.id: ()}
         for event in self.run_directory.load_events():
             candidate_id = event.get("candidate_id")
             if event.get("event") not in ("admit", "accept") or candidate_id is None or candidate_id in pool:
@@ -896,12 +974,21 @@ class Optimizer:
             else:
                 await self._score_candidate(candidate, self._challenger_cases())
             pool[candidate_id] = candidate
+            self._parents[candidate_id] = self._recorded_parents(candidate_id)
         best_id = self.run_directory.get_best()
         if best_id is not None and best_id not in pool:
             candidate = self._candidate_from_values(best_id, parent=baseline)
             await self._score_candidate(candidate)
             pool[best_id] = candidate
+            self._parents[best_id] = self._recorded_parents(best_id)
         return pool
+
+    def _recorded_parents(self, candidate_id: str) -> tuple[str, ...]:
+        """A candidate's parent ids as its manifest recorded them."""
+        manifest = self.run_directory.read_manifest(candidate_id) or {}
+        if manifest.get("parent_ids"):
+            return tuple(manifest["parent_ids"])
+        return (manifest["parent_id"],) if manifest.get("parent_id") else ()
 
     def _validate_resume(self, config: dict[str, Any]) -> None:
         """Fail fast when the caller resumes with different cases or artifacts than recorded.

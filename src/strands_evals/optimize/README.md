@@ -55,7 +55,7 @@ Every case needs a unique `name`: the optimizer keys its caches, its case split,
 
 ## Reading the result
 
-- `result.summary()` — baseline vs champion score on the held-out split, accept/reject and admitted/dominated counts, spend.
+- `result.summary()` — baseline vs champion score on the held-out split, accept/reject, admitted/dominated, and merge counts, spend.
 - `result.best.diff()` — the deliverable: the champion as a unified diff against your baseline artifacts.
 - `result.frontier` — the final frontier: each member's candidate id and the selection cases it leads.
 - `result.to_rows(grain)` — the run flattened into plot-ready rows (below).
@@ -75,7 +75,7 @@ Every case needs a unique `name`: the optimizer keys its caches, its case split,
 | `rollouts_spent` | rollouts this iteration | spend per iteration bars |
 | `proposals_count`, `accepted_candidate_id` | how many edits were tried, and which (if any) became champion | accept markers on the convergence curve |
 | `incumbent_id`, `incumbent_values` | the champion and its full artifact values | annotations / joining rows to candidates |
-| `parent_id`, `frontier_size` | the frontier member this iteration's edits came from, and how many members the frontier had | exploration view: how often the search left the champion's line |
+| `step`, `parent_id`, `frontier_size` | `propose` or `merge`; the frontier member this iteration's edits came from (a merge's first parent); and how many members the frontier had | exploration view: how often the search left the champion's line, and where merges happened |
 
 `grain="proposal"` gives one row per proposed edit — the frontier's and the gate's view:
 
@@ -87,7 +87,7 @@ Every case needs a unique `name`: the optimizer keys its caches, its case split,
 | `status` | `accepted` (admitted and became champion) / `admitted` (joined the frontier; lost or never made a champion challenge) / `dominated` (scored, not on the frontier) / `unscored` (budget) | color / facet |
 | `artifact_name` | which artifact the edit touched | per-artifact accept-rate bars (where the leverage is) |
 | `n_cases`, `error_rollouts` | held-out cases compared, and rollouts that crashed | gate-health panel |
-| `candidate_id`, `parent_id`, `rationale`, `values`, `diff`, `verdict_reason` | lineage and the edit itself | tooltips / drill-down |
+| `candidate_id`, `parent_id`, `parent_ids`, `rationale`, `values`, `diff`, `verdict_reason` | lineage (`parent_ids` has two entries for a merge) and the edit itself | tooltips / drill-down |
 
 ```python
 import pandas as pd
@@ -158,7 +158,7 @@ Cases split three ways (settings on `Gate`): a training split (the proposer read
 
 Each iteration:
 
-1. **Selection.** The frontier is every candidate in the pool that is the best (within `frontier_eps`) on at least one selection case and is not dominated: no other candidate leads a strict superset of its cases, and on identical lead sets the earlier candidate wins. One frontier member is sampled as the parent, weighted by how many cases it leads, so a specialist that uniquely solves some cases keeps being explored even when its average is mediocre.
+1. **Selection.** When two frontier members changed different knobs since their latest common ancestor, and that pair has not been merged yet, the iteration is a **merge step**: the two are combined knob by knob (each knob from whichever side changed it) with no proposer call, and the merged candidate goes through steps 3–5 like any other. `Gate(max_merges=5)` caps merge steps per run; `0` disables them. A pair that changed the same knob differently is never merged. Otherwise, the frontier is every candidate in the pool that is the best (within `frontier_eps`) on at least one selection case and is not dominated: no other candidate leads a strict superset of its cases, and on identical lead sets the earlier candidate wins. One frontier member is sampled as the parent, weighted by how many cases it leads, so a specialist that uniquely solves some cases keeps being explored even when its average is mediocre.
 2. **Proposal.** The proposer reads the parent's worst training cases and returns edits of the parent.
 3. **Scoring.** Each edit is scored `runs_per_candidate` times and per-case scores are averaged. Crashed rollouts are excluded and counted, not scored 0.0.
 4. **Admission (loose).** An edit joins the pool when it would land on the frontier and has scores for at least `min_coverage` of its parent's selection cases. A no-op edit ties its parent everywhere and is dominated.

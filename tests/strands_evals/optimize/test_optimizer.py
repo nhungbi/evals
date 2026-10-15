@@ -657,3 +657,107 @@ async def test_low_selection_coverage_is_dominated(tmp_path):
     assert result.dominated_count == 1
     assert result.iterations[0].proposals[0].status == "dominated"
     assert result.best.id == result.baseline.id
+
+
+# -- merge --------------------------------------------------------------------------------------
+
+
+def make_two_knob_optimizer(tmp_path, batches, *, max_iterations, run_dir=None, gate=None):
+    """The specialist setup over two knobs: `FIX_A` in `instructions` fixes group A, `FIX_B` in
+    `tool_desc` fixes group B. The two fixes live in different knobs, so they merge cleanly."""
+    group_b: set[str] = set()
+
+    def two_knob_task(candidate):
+        def task(case):
+            fixed = FIX_B in candidate["tool_desc"] if case.name in group_b else FIX_A in candidate["instructions"]
+            return {"output": "42" if fixed else "0"}
+
+        return task
+
+    optimizer = Optimizer(
+        make_experiment(30),
+        two_knob_task,
+        ArtifactSpace(instructions=TextArtifact("You are unhelpful."), tool_desc=TextArtifact("Searches things.")),
+        budget=Budget(max_rollouts=10_000, max_iterations=max_iterations),
+        gate=gate or Gate(runs_per_candidate=1),
+        proposer=ScriptedProposer(batches),
+        base_dir=tmp_path if run_dir is None else None,
+        run_dir=run_dir,
+        max_workers=4,
+    )
+    group_b.update(optimizer.selection_names[:4])
+    group_b.update(optimizer.holdout_names[:5])
+    group_b.update(optimizer.train_names[:6])
+    return optimizer
+
+
+def two_knob_batches():
+    return [
+        [
+            Proposal(artifact_name="instructions", new_value=FIX_A, rationale="fix group A"),
+            Proposal(artifact_name="tool_desc", new_value=FIX_B, rationale="fix group B"),
+        ]
+    ]
+
+
+async def test_merge_combines_complementary_specialists_without_the_proposer(tmp_path):
+    optimizer = make_two_knob_optimizer(tmp_path, two_knob_batches(), max_iterations=2)
+
+    result = await optimizer.run()
+
+    first, second = result.iterations
+    fix_a = next(p for p in first.proposals if p.artifact_name == "instructions")
+    fix_b = next(p for p in first.proposals if p.artifact_name == "tool_desc")
+    assert (fix_a.status, fix_b.status) == ("accepted", "admitted")
+
+    # Iteration 2 is a merge step: no proposer call, both parents recorded.
+    assert second.step == "merge"
+    assert optimizer.proposer.calls == 1
+    merged = second.proposals[0]
+    assert merged.parent_ids == [fix_a.candidate_id, fix_b.candidate_id]
+    assert merged.values == {"instructions": FIX_A, "tool_desc": FIX_B}
+    assert merged.artifact_name == "instructions+tool_desc"
+    assert merged.status == "accepted"
+    assert optimizer.run_directory.read_manifest(merged.candidate_id)["parent_ids"] == merged.parent_ids
+    merge_events = [e for e in result.lineage if e["event"] == "merge"]
+    assert len(merge_events) == 1
+    assert merge_events[0]["ancestor_id"] == result.baseline.id
+    assert (merge_events[0]["from_first"], merge_events[0]["from_second"]) == (["instructions"], ["tool_desc"])
+
+    assert result.best.id == merged.candidate_id
+    assert result.best_holdout_score == 1.0
+    assert result.frontier == {merged.candidate_id: sorted(optimizer.selection_names)}
+    assert result.merge_count == 1
+    assert "1 merges" in result.summary()
+    assert [r["step"] for r in result.to_rows("iteration")] == ["propose", "merge"]
+    assert [r["parent_ids"] for r in result.to_rows("proposal") if r["iteration"] == 2] == [merged.parent_ids]
+
+
+async def test_merging_can_be_disabled(tmp_path):
+    optimizer = make_two_knob_optimizer(
+        tmp_path, two_knob_batches(), max_iterations=2, gate=Gate(runs_per_candidate=1, max_merges=0)
+    )
+
+    result = await optimizer.run()
+
+    assert result.merge_count == 0
+    assert all(record.step == "propose" for record in result.iterations)
+
+
+async def test_a_pair_is_merged_once_even_across_resume(tmp_path):
+    first_leg = make_two_knob_optimizer(tmp_path, two_knob_batches(), max_iterations=2)
+    await first_leg.run()
+
+    # The merged candidate dominates both specialists, so the frontier has one member and the
+    # resumed run proposes; even if both were still on the frontier, the pair is recorded as tried.
+    noise = [[Proposal(artifact_name="tool_desc", new_value="noise", rationale="noise")]]
+    second_leg = make_two_knob_optimizer(tmp_path, noise, max_iterations=3, run_dir=first_leg.run_directory.root)
+    assert second_leg._merged_pairs == {
+        frozenset(e["parent_ids"]) for e in first_leg.run_directory.load_events() if e["event"] == "merge"
+    }
+    result = await second_leg.run()
+
+    assert result.merge_count == 1
+    assert result.iterations[-1].step == "propose"
+    # Parents of the merged champion were rebuilt from its manifest.
+    assert len(second_leg._parents[result.best.id]) == 2

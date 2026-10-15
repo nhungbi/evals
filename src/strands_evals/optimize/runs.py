@@ -3,13 +3,14 @@
 Layout:
 
     <base>/<run_id>/
-        run.json                 # config, budget, train/holdout split, baseline candidate id
+        run.json                 # config, budget, train/selection/holdout split, knob names
         candidates/<cand_id>/
-            manifest.json        # parent id, rationale, per-artifact hashes, status
+            manifest.json        # parent id(s), rationale, per-artifact hashes, status
             artifacts/           # materialized workspace for this candidate
             scores/run<i>/       # one task-result cache directory per repeated run
             scores/run<i>.report.json   # the scored EvaluationReport for that run
-        lineage.jsonl            # append-only event log: propose / score / select / admit / dominated / accept / reject
+        lineage.jsonl            # append-only event log: propose, score, select, merge, admit,
+                                 # dominated, accept, reject
         best                     # pointer file naming the current champion
 
 Nothing in the directory is ever overwritten: rejected candidates keep their content and scores,
@@ -96,7 +97,9 @@ class RunDirectory:
         rationale: str | None,
         values: dict[str, str],
         status: str,
+        parent_ids: list[str] | None = None,
     ) -> None:
+        """Write a candidate's manifest. `parent_ids` is recorded only for merges (two parents)."""
         if status not in CANDIDATE_STATUSES:
             raise ValueError(f"status must be one of {CANDIDATE_STATUSES}, got {status!r}")
         directory = self.candidate_dir(candidate_id)
@@ -104,6 +107,7 @@ class RunDirectory:
         manifest = {
             "candidate_id": candidate_id,
             "parent_id": parent_id,
+            **({"parent_ids": list(parent_ids)} if parent_ids else {}),
             "rationale": rationale,
             "artifact_hashes": {
                 name: hashlib.sha256(value.encode()).hexdigest() for name, value in sorted(values.items())
