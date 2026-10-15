@@ -19,6 +19,7 @@ from strands_evals.optimize import (
     TextArtifact,
 )
 from strands_evals.optimize.proposer import Proposal, Proposer
+from strands_evals.types.evaluation_report import EvaluationReport
 
 MAGIC = "Always answer 42."
 
@@ -93,6 +94,45 @@ async def test_loop_accepts_an_improving_edit(tmp_path):
     accepted = [p for p in seen_iterations[0].proposals if p.status == "accepted"]
     assert len(accepted) == 1
     assert accepted[0].verdict is not None and accepted[0].verdict.accepted
+
+
+async def test_a_returned_trajectory_reaches_the_proposer_and_survives_resume(tmp_path):
+    def traced_build_task(candidate):
+        def task(case):
+            answer = "42" if MAGIC in candidate["instructions"] else "0"
+            trajectory = [
+                {"role": "user", "content": [{"text": case.input}]},
+                {"role": "assistant", "content": [{"toolUse": {"name": "lookup", "input": {"q": case.name}}}]},
+                {"role": "assistant", "content": [{"text": answer}]},
+            ]
+            return {"output": answer, "trajectory": trajectory}
+
+        return task
+
+    class RecordingProposer(ScriptedProposer):
+        def propose(self, space, incumbent, records):
+            self.seen = records
+            return super().propose(space, incumbent, records)
+
+    optimizer = Optimizer(
+        make_experiment(),
+        traced_build_task,
+        ArtifactSpace(instructions=TextArtifact("You are unhelpful.")),
+        budget=Budget(max_rollouts=200, max_iterations=1),
+        gate=Gate(runs_per_candidate=1),
+        proposer=RecordingProposer([[Proposal(artifact_name="instructions", new_value=MAGIC, rationale="r")]]),
+        base_dir=tmp_path,
+    )
+    result = await optimizer.run()
+
+    trajectory = optimizer.proposer.seen[0]["Trajectory"]
+    assert trajectory.splitlines()[0].startswith("[user] question ")
+    assert '[assistant -> tool lookup] {"q": "case_' in trajectory
+
+    # Resume reads reports back from disk: the stored trajectory renders the same way.
+    report_path = optimizer.run_directory.report_path(result.baseline.id, 0)
+    stored = optimizer._aggregate(result.baseline.id, [EvaluationReport.model_validate_json(report_path.read_text())])
+    assert all("[assistant -> tool lookup]" in rows[0]["trajectory"] for rows in stored.case_rows.values())
 
 
 async def test_result_exports_serializable_rows_with_applied_values(tmp_path):

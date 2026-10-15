@@ -135,9 +135,10 @@ strands-evals/
 │   │   ├── frontier.py                       # Pareto frontier: case leaders, dominance, parent sampling
 │   │   ├── merge.py                          # Knob-wise merge of two frontier members (GEPA crossover)
 │   │   ├── runs.py                           # Append-only run directory, lineage.jsonl, resume
+│   │   ├── trajectories.py                   # Renders a returned trajectory (Session or messages) for reflection
 │   │   ├── rewards.py                        # RewardFunction + RewardFunctionEvaluator adapter
 │   │   ├── formulas/                         # Runtime hooks with tunable text (from harness-optimizer)
-│   │   └── prompt_templates/proposer/        # proposer_v0 + contrastive_v0 prompt constants
+│   │   └── prompt_templates/proposer/        # proposer_v0/v1 + contrastive_v0/v1 prompt constants
 │   │
 │   ├── detectors/                            # Failure detection + RCA
 │   │   ├── failure_detector.py               # detect_failures (model.stream text mode)

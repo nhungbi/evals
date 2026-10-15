@@ -41,6 +41,7 @@ from .frontier import pareto_front, sample_parent
 from .merge import MergePlan, find_merge_pair
 from .proposer import Proposer, build_reflection_records
 from .runs import RunDirectory
+from .trajectories import render_trajectory
 
 logger = logging.getLogger(__name__)
 
@@ -895,13 +896,16 @@ class Optimizer:
         like a bad prompt.
 
         `case_rows` deliberately keeps only the most recent run's rows per case: the reflection
-        records show the proposer one representative behavior, not k near-duplicates.
+        records show the proposer one representative behavior, not k near-duplicates. A row's
+        `trajectory` is the task's returned trajectory rendered as capped text, once per case, so
+        the rows never hold a full `Session`.
         """
         score = CandidateScore(candidate_id=candidate_id)
         run_case_scores: dict[str, list[float]] = {}
         for report in reports:
             by_case: dict[str, list[float]] = {}
             rows_by_case: dict[str, list[dict[str, Any]]] = {}
+            rendered: dict[str, str] = {}
             for i, case_row in enumerate(report.cases):
                 name = case_row.get("name")
                 if name is None:
@@ -914,6 +918,8 @@ class Optimizer:
                 if detailed and not EvaluationReport.is_applicable(detailed):
                     continue
                 by_case.setdefault(name, []).append(report.scores[i])
+                if name not in rendered:
+                    rendered[name] = render_trajectory(case_row.get("actual_trajectory"))
                 rows_by_case.setdefault(name, []).append(
                     {
                         "evaluator": case_row.get("evaluator"),
@@ -921,6 +927,7 @@ class Optimizer:
                         "reason": reason,
                         "input": case_row.get("input"),
                         "actual_output": case_row.get("actual_output"),
+                        "trajectory": rendered[name],
                     }
                 )
             for name, values in by_case.items():

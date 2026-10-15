@@ -30,6 +30,20 @@ def test_build_reflection_records_skips_cases_without_rows():
     assert records == []
 
 
+def test_build_reflection_records_carries_a_trajectory_only_when_present():
+    row = {"evaluator": "Equals", "score": 0.0, "reason": "wrong", "input": "q", "actual_output": "a"}
+    rows = {"traced": [{**row, "trajectory": "[user] q\n[assistant] a"}], "plain": [{**row, "trajectory": ""}]}
+
+    records = {r["case"]: r for r in build_reflection_records(rows, {"traced": 0.0, "plain": 0.0})}
+
+    assert records["traced"]["Trajectory"] == "[user] q\n[assistant] a"
+    assert "Trajectory" not in records["plain"]
+
+
+def test_default_prompt_describes_the_trajectory():
+    assert "Trajectory" in Proposer().system_prompt
+
+
 def test_filter_valid_drops_unknown_artifact():
     space, incumbent = _space_and_incumbent()
     proposer = Proposer()

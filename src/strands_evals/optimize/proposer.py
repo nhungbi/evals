@@ -3,7 +3,8 @@
 The proposer is one LLM call whose input is deliberately rich, because textual feedback is this
 method's entire advantage over scalar-reward optimization: the worst-scoring cases, the agent's
 actual outputs, and every evaluator's written `reason`. The records follow the field-tested shape
-from the gepa library's teacher prompts: `Inputs`, `Generated Outputs`, `Feedback`.
+from the gepa library's teacher prompts: `Inputs`, `Generated Outputs`, `Feedback`, plus
+`Trajectory` when the task returned one (rendered by `trajectories.render_trajectory`).
 
 Guardrails are enforced in code after the call, since a prompt cannot enforce anything: an edit
 may only touch artifacts in the space, every artifact has a size cap, and file and config
@@ -21,7 +22,7 @@ from typing_extensions import Any, cast
 
 from .artifacts import ArtifactSpace, _default_size_cap
 from .candidate import Candidate
-from .prompt_templates.proposer import proposer_v0
+from .prompt_templates.proposer import proposer_v1
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +55,14 @@ def build_reflection_records(
 
     Args:
         case_rows: Case name to that case's evaluator rows. Each row needs `evaluator`,
-            `reason`, and the case's `input` / `actual_output` fields from the report.
+            `reason`, and the case's `input` / `actual_output` fields from the report, and may
+            carry `trajectory`, the rendered trajectory text.
         per_case_scores: Case name to its aggregate score, used to pick the worst cases.
         max_records: How many cases to include, lowest score first.
 
     Returns:
-        Records shaped `{"case", "score", "Inputs", "Generated Outputs", "Feedback"}`.
+        Records shaped `{"case", "score", "Inputs", "Generated Outputs", "Feedback"}`, plus
+        `"Trajectory"` when the case's rows carry a non-empty one.
     """
     worst = sorted(per_case_scores, key=lambda name: per_case_scores[name])[:max_records]
     records = []
@@ -73,15 +76,16 @@ def build_reflection_records(
             for row in rows
             if row.get("reason")
         )
-        records.append(
-            {
-                "case": name,
-                "score": round(per_case_scores[name], 4),
-                "Inputs": _as_text(first.get("input")),
-                "Generated Outputs": _as_text(first.get("actual_output"))[:_MAX_OUTPUT_CHARS],
-                "Feedback": feedback[:_MAX_FEEDBACK_CHARS],
-            }
-        )
+        record = {
+            "case": name,
+            "score": round(per_case_scores[name], 4),
+            "Inputs": _as_text(first.get("input")),
+            "Generated Outputs": _as_text(first.get("actual_output"))[:_MAX_OUTPUT_CHARS],
+            "Feedback": feedback[:_MAX_FEEDBACK_CHARS],
+        }
+        if first.get("trajectory"):
+            record["Trajectory"] = first["trajectory"]
+        records.append(record)
     return records
 
 
@@ -93,7 +97,7 @@ class Proposer:
     call when there are no reflection records to learn from.
     """
 
-    template = proposer_v0
+    template = proposer_v1
     require_records = False
 
     def __init__(

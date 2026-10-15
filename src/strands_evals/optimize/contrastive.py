@@ -8,7 +8,7 @@ Pick it over the default reason-driven proposer when the eval suite's written re
 or when the agent's failures live in trajectories rather than in any single evaluator reason.
 """
 
-from .prompt_templates.proposer import contrastive_v0
+from .prompt_templates.proposer import contrastive_v1
 from .proposer import Proposer
 
 
@@ -20,5 +20,5 @@ class ContrastiveReflectionProposer(Proposer):
     without failures.
     """
 
-    template = contrastive_v0
+    template = contrastive_v1
     require_records = True
