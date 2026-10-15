@@ -1,67 +1,65 @@
-"""Immutable, content-addressed snapshots of artifact values.
+"""Immutable, content-addressed candidates over typed values.
 
-A `Candidate` is one point in the search: the full set of artifact values plus its lineage (parent
-id and the proposal rationale that produced it). Its id is a hash of the content, so identical
-content always gets an identical id, and caching, resume, and audit key off that for free.
+A `Candidate` is one point in the search: a flat typed mapping of parameter key to value, plus
+its lineage (parent id and the rationale that produced it). The typed mapping is canonical; the
+content id (hash of its canonical JSON) and the diff are derived views, so caching, resume, and
+review all key off the same values that numeric search reads.
 """
 
 import difflib
 import hashlib
+import json
 from pathlib import Path
-
-from typing_extensions import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 if TYPE_CHECKING:
-    from .artifacts import ArtifactSpace
+    from .space import Space
 
 _ID_LENGTH = 12
 
 
-def _content_id(values: Mapping[str, str]) -> str:
-    digest = hashlib.sha256()
-    for name in sorted(values):
-        digest.update(name.encode())
-        digest.update(b"\x00")
-        digest.update(values[name].encode())
-        digest.update(b"\x00")
-    return digest.hexdigest()[:_ID_LENGTH]
+def content_id(values: Mapping[str, Any]) -> str:
+    """The candidate id: a hash of the canonical JSON serialization of the typed values."""
+    canonical = json.dumps(dict(values), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:_ID_LENGTH]
 
 
 class Candidate:
-    """A snapshot of all artifact values, identified by the hash of its content.
+    """A typed snapshot of every parameter value, identified by the hash of its content.
 
     Attributes:
-        values: Artifact name to value. Treated as immutable after construction.
-        parent_id: Id of the candidate this one was mutated from, `None` for the seed.
-        rationale: The proposer's written reason for the edit that produced this candidate.
+        values: Parameter key to typed value (number, string, or option). Immutable after
+            construction.
+        parent_id: Id of the candidate this one was mutated from, `None` for the baseline.
+        rationale: The written reason for the edit that produced this candidate.
         id: Content hash. Two candidates with identical values share an id.
     """
 
     def __init__(
         self,
-        values: Mapping[str, str],
+        values: Mapping[str, Any],
         *,
         parent_id: str | None = None,
         rationale: str | None = None,
-        space: "ArtifactSpace | None" = None,
+        space: "Space | None" = None,
         baseline: "Candidate | None" = None,
         workspace_dir: Path | None = None,
     ):
-        self.values: dict[str, str] = dict(values)
+        self.values: dict[str, Any] = dict(values)
         self.parent_id = parent_id
         self.rationale = rationale
-        self.id = _content_id(self.values)
+        self.id = content_id(self.values)
         # Search context, injected by the optimizer so `materialize()` and `diff()` work bare.
         self._space = space
         self._baseline = baseline
         self._workspace_dir = workspace_dir
 
-    def __getitem__(self, name: str) -> str:
-        return self.values[name]
+    def __getitem__(self, key: str) -> Any:
+        return self.values[key]
 
     @property
     def baseline(self) -> "Candidate | None":
-        """The run's seed candidate this one is diffed against, when known."""
+        """The run's baseline candidate this one is diffed against, when known."""
         return self._baseline
 
     def __eq__(self, other: object) -> bool:
@@ -71,20 +69,16 @@ class Candidate:
         return hash(self.id)
 
     def __repr__(self) -> str:
-        return f"Candidate(id={self.id!r}, parent_id={self.parent_id!r}, artifacts={sorted(self.values)})"
+        return f"Candidate(id={self.id!r}, parent_id={self.parent_id!r}, keys={sorted(self.values)})"
 
     def with_context(
         self,
         *,
-        space: "ArtifactSpace | None" = None,
+        space: "Space | None" = None,
         baseline: "Candidate | None" = None,
         workspace_dir: Path | None = None,
     ) -> "Candidate":
-        """Return a copy with search context attached. Values, id, and lineage are unchanged.
-
-        The optimizer uses this to hand out candidates whose `materialize()` and `diff()` work
-        bare; a `Candidate` itself is never mutated after construction.
-        """
+        """Return a copy with search context attached. Values, id, and lineage are unchanged."""
         return Candidate(
             self.values,
             parent_id=self.parent_id,
@@ -94,55 +88,65 @@ class Candidate:
             workspace_dir=workspace_dir or self._workspace_dir,
         )
 
-    def materialize(self, workspace: Path | None = None) -> Path:
-        """Write this candidate's values into a workspace directory and return its path.
+    def mutate(self, updates: Mapping[str, Any], *, rationale: str | None = None) -> "Candidate":
+        """Return a child candidate with the given parameter values replaced.
 
-        Args:
-            workspace: Destination directory. Defaults to the directory the optimizer assigned
-                (`<run_dir>/candidates/<id>/artifacts`).
+        Values made inactive by a changed choice are dropped, and values the new choice needs are
+        filled at their defaults, so a child is always a complete, valid point of the space.
         """
         if self._space is None:
-            raise ValueError("candidate has no ArtifactSpace; pass one via the optimizer or Candidate(space=...)")
+            merged = {**self.values, **updates}
+        else:
+            kept = {k: v for k, v in self.values.items() if self._space.is_active(k, {**self.values, **updates})}
+            merged = self._space.complete({**kept, **updates})
+        return Candidate(
+            merged,
+            parent_id=self.id,
+            rationale=rationale,
+            space=self._space,
+            baseline=self._baseline or self,
+        )
+
+    def materialize(self, workspace: Path | None = None) -> Path:
+        """Write this candidate's artifact values into a workspace directory and return its path."""
+        if self._space is None:
+            raise ValueError("candidate has no Space; pass one via the optimizer or Candidate(space=...)")
         destination = workspace or self._workspace_dir
         if destination is None:
             raise ValueError("no workspace directory available; pass `workspace` explicitly")
         return self._space.materialize(self.values, Path(destination))
 
     def diff(self, baseline: "Candidate | None" = None) -> str:
-        """Render a unified diff of this candidate against `baseline`.
+        """Render a reviewable diff of this candidate against `baseline`.
 
-        Args:
-            baseline: Candidate to diff against. Defaults to the run's seed candidate.
-
-        Returns:
-            A unified diff across every changed artifact, empty string when nothing changed.
+        Text parameters render as a unified diff; numbers and choices render as one-line
+        before/after pairs under the same file-style headers.
         """
         other = baseline or self._baseline
         if other is None:
             raise ValueError("no baseline candidate to diff against; pass one explicitly")
         parts: list[str] = []
-        for name in sorted(self.values):
-            old = other.values.get(name, "")
-            new = self.values[name]
+        for key in sorted(set(self.values) | set(other.values)):
+            old = other.values.get(key)
+            new = self.values.get(key)
             if old == new:
                 continue
-            path = self._space[name].display_path() if self._space and name in self._space else name
-            # difflib emits no separator after a line that lacks a trailing newline, which glues
-            # the removed and added text together for single-line values; normalize both sides.
-            old_lines = [line if line.endswith("\n") else line + "\n" for line in old.splitlines()]
-            new_lines = [line if line.endswith("\n") else line + "\n" for line in new.splitlines()]
-            lines = difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{path}", tofile=f"b/{path}")
-            parts.append("".join(lines))
-        return "\n".join(parts)
+            path = self._space.display_path(key) if self._space and key in self._space else key
+            kind = self._space.param(key).kind if self._space and key in self._space else "text"
+            if kind in ("text", "skills"):
+                old_lines = _diff_lines(str(old) if old is not None else "")
+                new_lines = _diff_lines(str(new) if new is not None else "")
+                parts.append(
+                    "".join(difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{path}", tofile=f"b/{path}"))
+                )
+            else:
+                old_text = f"{key} = {old!r}" if key in other.values else f"{key} (absent under those choices)"
+                new_text = f"{key} = {new!r}" if key in self.values else f"{key} (absent under these choices)"
+                parts.append(f"--- a/{path}\n+++ b/{path}\n-{old_text}\n+{new_text}\n")
+        return "\n".join(part for part in parts if part)
 
-    def mutate(self, artifact_name: str, new_value: str, *, rationale: str | None = None) -> "Candidate":
-        """Return a child candidate with one artifact value replaced."""
-        values = dict(self.values)
-        values[artifact_name] = new_value
-        return Candidate(
-            values,
-            parent_id=self.id,
-            rationale=rationale,
-            space=self._space,
-            baseline=self._baseline or self,
-        )
+
+def _diff_lines(text: str) -> list[str]:
+    # difflib emits no separator after a line that lacks a trailing newline, which glues the
+    # removed and added text together for single-line values; normalize every line.
+    return [line if line.endswith("\n") else line + "\n" for line in text.splitlines()]

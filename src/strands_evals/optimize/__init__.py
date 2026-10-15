@@ -1,71 +1,132 @@
-"""Agent optimization: improve an agent's text artifacts against an `Experiment`.
+"""Agent optimization: declare the space, run the loop, review what survived the gate.
 
-The optimizer rewrites named artifacts (instructions, `SKILL.md` files, tool descriptions, config
-fields), scores each candidate with the caller's existing cases and evaluators, and outputs the
-best candidate as a reviewable diff. This module does no weight training. The `RewardFunction`
-scoring contract is shared with trainers that do, which consume it from outside this package.
+The developer declares what may change about their agent (prompts, components, numeric knobs,
+skills, files on disk), hands the optimizer their existing `Experiment`, and gets back changes
+that provably helped: a reviewable diff for text, the winning typed values for knobs. Inside, a
+search layer proposes (LLM reflection for text, Bayesian search for numbers and choices), an
+execution layer builds agents fresh and meters usage, a scoring layer reduces metrics to one
+scalar under optional objectives and constraints, and a mandatory statistical acceptance gate
+decides. This module does no weight training; the `RewardFunction` scoring contract is shared
+with trainers that do, which consume it from outside this package.
 
 See `README.md` in this directory for scope, cost warnings, and usage.
 """
 
-from .acceptance import AcceptanceVerdict, paired_bootstrap_compare
 from .artifacts import Artifact, ArtifactSpace, FileArtifact, FormulaArtifact, JsonFieldArtifact, TextArtifact
 from .candidate import Candidate
-from .contrastive import ContrastiveReflectionProposer
-from .declarative import Choice, Component, Float, Int, OneOf, TextValue, TunableFactory
-from .factory import choice, component, tunable
+from .execution import USAGE_METRICS, TrialLedger, TrialStatus, default_rollout
+from .factory import TunableFactory, tunable
 from .formulas import ContextExpansionFormula, Formula, SystemPromptFormula, ToolDescriptionFormula
+from .gate import AcceptanceVerdict, Budget, Gate, paired_bootstrap_compare
+from .markers import Choice, Component, Float, Int, OneOf, SkillLibrary, Switch, TextValue, choice, component
+from .methods import (
+    TPE,
+    ContrastiveReflection,
+    ContrastiveReflectionProposer,
+    Method,
+    Observation,
+    Patch,
+    Reflection,
+    SkillCuration,
+    build_reflection_records,
+)
+from .objectives import (
+    AtLeast,
+    AtMost,
+    Chebyshev,
+    Combine,
+    Constraint,
+    Derived,
+    Lexicographic,
+    Maximize,
+    Minimize,
+    Objective,
+    Pareto,
+    Projection,
+    WeightedSum,
+)
 from .optimizer import (
-    Budget,
     CandidateScore,
-    Gate,
     IterationRecord,
     OptimizationResult,
     Optimizer,
     ProposalOutcome,
     ProposalStatus,
 )
-from .proposer import Proposal, Proposer, build_reflection_records
 from .rewards import RewardFunction, RewardFunctionEvaluator
 from .runs import RunDirectory
+from .search import Alternate, Block, Joint, Nested, Schedule, Search
+from .space import ParamInfo, Space
 
 __all__ = [
     "AcceptanceVerdict",
+    "Alternate",
     "Artifact",
     "ArtifactSpace",
+    "AtLeast",
+    "AtMost",
+    "Block",
     "Budget",
     "Candidate",
-    "Component",
-    "Float",
-    "Int",
-    "Choice",
     "CandidateScore",
+    "Chebyshev",
+    "Choice",
+    "Combine",
+    "Component",
+    "Constraint",
     "ContextExpansionFormula",
+    "ContrastiveReflection",
     "ContrastiveReflectionProposer",
+    "Derived",
     "FileArtifact",
+    "Float",
     "Formula",
     "FormulaArtifact",
     "Gate",
+    "Int",
     "IterationRecord",
+    "Joint",
     "JsonFieldArtifact",
-    "OptimizationResult",
+    "Lexicographic",
+    "Maximize",
+    "Method",
+    "Minimize",
+    "Nested",
+    "Objective",
+    "Observation",
     "OneOf",
+    "OptimizationResult",
     "Optimizer",
-    "Proposal",
+    "ParamInfo",
+    "Pareto",
+    "Patch",
+    "Projection",
     "ProposalOutcome",
     "ProposalStatus",
-    "Proposer",
+    "Reflection",
     "RewardFunction",
     "RewardFunctionEvaluator",
     "RunDirectory",
+    "Schedule",
+    "Search",
+    "SkillCuration",
+    "SkillLibrary",
+    "Space",
+    "Switch",
     "SystemPromptFormula",
+    "TPE",
     "TextArtifact",
     "TextValue",
-    "TunableFactory",
     "ToolDescriptionFormula",
+    "TrialLedger",
+    "TrialStatus",
+    "TunableFactory",
+    "USAGE_METRICS",
+    "WeightedSum",
     "build_reflection_records",
     "choice",
     "component",
+    "default_rollout",
     "paired_bootstrap_compare",
     "tunable",
 ]

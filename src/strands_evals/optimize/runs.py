@@ -104,8 +104,9 @@ class RunDirectory:
             "candidate_id": candidate_id,
             "parent_id": parent_id,
             "rationale": rationale,
-            "artifact_hashes": {
-                name: hashlib.sha256(value.encode()).hexdigest() for name, value in sorted(values.items())
+            "value_hashes": {
+                name: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+                for name, value in sorted(values.items())
             },
             "status": status,
         }
@@ -126,14 +127,26 @@ class RunDirectory:
         manifest["status"] = status
         (self.candidate_dir(candidate_id) / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
-    def save_values(self, candidate_id: str, values: dict[str, str]) -> None:
-        """Persist the raw artifact values so resume can rebuild the candidate exactly."""
+    def save_values(self, candidate_id: str, values: dict[str, Any]) -> None:
+        """Persist the typed parameter values so resume can rebuild the candidate exactly."""
         directory = self.candidate_dir(candidate_id)
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "values.json").write_text(json.dumps(values, indent=2) + "\n")
 
-    def load_values(self, candidate_id: str) -> dict[str, str] | None:
+    def load_values(self, candidate_id: str) -> dict[str, Any] | None:
         path = self.candidate_dir(candidate_id) / "values.json"
+        if not path.exists():
+            return None
+        return json.loads(path.read_text())
+
+    def save_usage(self, candidate_id: str, usage: dict[str, dict[str, float]]) -> None:
+        """Persist per-case usage metrics, so a resumed run keeps its cost measurements."""
+        directory = self.candidate_dir(candidate_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "usage.json").write_text(json.dumps(usage, indent=2) + "\n")
+
+    def load_usage(self, candidate_id: str) -> dict[str, dict[str, float]] | None:
+        path = self.candidate_dir(candidate_id) / "usage.json"
         if not path.exists():
             return None
         return json.loads(path.read_text())
