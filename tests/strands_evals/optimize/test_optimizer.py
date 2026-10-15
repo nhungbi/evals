@@ -133,7 +133,9 @@ async def test_result_exports_serializable_rows_with_applied_values(tmp_path):
         result.to_rows("run")
 
 
-async def test_loop_rejects_an_edit_that_changes_nothing_measurable(tmp_path):
+async def test_loop_dominates_an_edit_that_changes_nothing_measurable(tmp_path):
+    # An edit that scores exactly like its parent ties it on every case; the tie goes to the
+    # existing pool member, so the edit never joins the frontier and never challenges the champion.
     optimizer = make_optimizer(
         tmp_path,
         [[Proposal(artifact_name="instructions", new_value="You are extra unhelpful.", rationale="reworded")]],
@@ -142,12 +144,16 @@ async def test_loop_rejects_an_edit_that_changes_nothing_measurable(tmp_path):
     result = await optimizer.run()
 
     assert result.accepted_count == 0
-    assert result.rejected_count == 1
+    assert result.rejected_count == 0
+    assert result.admitted_count == 0
+    assert result.dominated_count == 1
     assert result.best.id == result.baseline.id
     assert result.best_holdout_score == result.baseline_holdout_score
-    reject_events = [e for e in result.lineage if e["event"] == "reject"]
-    assert len(reject_events) == 1
-    assert "tie" in reject_events[0]["reason"]
+    assert [e for e in result.lineage if e["event"] == "reject"] == []
+    dominated = result.iterations[0].proposals[0]
+    assert dominated.status == "dominated" and dominated.verdict is None
+    assert optimizer.run_directory.read_manifest(dominated.candidate_id)["status"] == "dominated"
+    assert result.frontier == {result.baseline.id: sorted(optimizer.selection_names)}
 
 
 async def test_budget_stops_before_first_iteration(tmp_path):
@@ -281,9 +287,9 @@ async def test_proposer_crash_stops_gracefully_and_stays_resumable(tmp_path):
 
 
 async def test_cheap_challenger_scoring_spends_fewer_rollouts(tmp_path):
-    # Three scored proposals in one iteration: the winner is accepted (and topped up to the full
-    # set), the other two are rejected and never pay the train-case cost. That is where cheap
-    # scoring saves, so the run must come in under the full-scoring cost for the same candidates.
+    # Three scored proposals in one iteration: the winner is admitted, becomes champion, and is
+    # topped up to the full set; the other two are dominated and never pay the train-case cost.
+    # That is where cheap scoring saves, so the run must come in under the full-scoring cost.
     proposals = [
         Proposal(artifact_name="instructions", new_value=MAGIC, rationale="fix"),
         Proposal(artifact_name="instructions", new_value="still unhelpful A", rationale="a"),
@@ -301,14 +307,14 @@ async def test_cheap_challenger_scoring_spends_fewer_rollouts(tmp_path):
     assert result.best_holdout_score == 1.0
 
     events = [e for e in result.lineage if e["event"] == "score"]
-    holdout_n = len(optimizer.holdout_names)
+    challenge_n = len(set(optimizer.selection_names) | set(optimizer.holdout_names))
     train_n = len(optimizer.train_names)
-    total = holdout_n + train_n
+    total = len(optimizer._case_names)
     k = optimizer.gate.runs_per_candidate
-    # Rejected challengers were scored on the holdout only; proven by holdout-tagged events.
-    holdout_events = [e for e in events if e.get("tag") == "holdout"]
-    assert holdout_events and all(e["rollouts"] == holdout_n for e in holdout_events)
-    # The accepted challenger's top-up re-runs only the train cases (holdout hit the cache).
+    # Challengers were scored on selection plus holdout only; proven by challenge-tagged events.
+    challenge_events = [e for e in events if e.get("tag") == "challenge"]
+    assert challenge_events and all(e["rollouts"] == challenge_n for e in challenge_events)
+    # The new champion's top-up re-runs only the train cases (its other cases hit the cache).
     assert [e for e in events if e.get("tag") == "full" and e["rollouts"] == train_n]
     # Full-scoring would cost baseline + 3 challengers all on the full set.
     full_path_cost = total * k * 4
@@ -331,10 +337,10 @@ async def test_duplicate_proposals_collapse_to_one_candidate(tmp_path):
     assert optimizer.run_directory.read_manifest(result.best.id)["status"] == "accepted"
 
 
-async def test_uncompared_proposals_are_skipped_not_rejected(tmp_path):
-    # Once one candidate is accepted, the rest of the iteration's scored candidates never face
-    # the gate. They must be recorded as skipped, with a lineage event, so in-run counters and
-    # lineage replay agree.
+async def test_dominated_proposals_never_face_the_gate(tmp_path):
+    # In one iteration the fix is admitted and becomes champion, and the noise edit (which leads
+    # no case once the fix is in the pool) is dominated. Both outcomes are recorded with a lineage
+    # event, so in-run counters and lineage replay agree.
     proposals = [
         Proposal(artifact_name="instructions", new_value=MAGIC, rationale="fix"),
         Proposal(artifact_name="instructions", new_value="still unhelpful", rationale="noise"),
@@ -345,14 +351,15 @@ async def test_uncompared_proposals_are_skipped_not_rejected(tmp_path):
 
     assert result.accepted_count == 1
     assert result.rejected_count == 0
-    assert result.skipped_count == 1
+    assert result.admitted_count == 1
+    assert result.dominated_count == 1
     statuses = sorted(p.status for p in result.iterations[0].proposals)
-    assert statuses == ["accepted", "skipped"]
-    skip_events = [e for e in result.lineage if e["event"] == "skip"]
-    assert len(skip_events) == 1
-    skipped = [p for p in result.iterations[0].proposals if p.status == "skipped"][0]
-    assert skipped.verdict is None
-    assert optimizer.run_directory.read_manifest(skipped.candidate_id)["status"] == "skipped"
+    assert statuses == ["accepted", "dominated"]
+    assert len([e for e in result.lineage if e["event"] == "admit"]) == 1
+    assert len([e for e in result.lineage if e["event"] == "dominated"]) == 1
+    dominated = [p for p in result.iterations[0].proposals if p.status == "dominated"][0]
+    assert dominated.verdict is None
+    assert optimizer.run_directory.read_manifest(dominated.candidate_id)["status"] == "dominated"
 
     # A resumed run replays the same totals from the lineage.
     resumed = Optimizer.resume(
@@ -367,7 +374,9 @@ async def test_uncompared_proposals_are_skipped_not_rejected(tmp_path):
     resumed_result = await resumed.run()
     assert resumed_result.accepted_count == 1
     assert resumed_result.rejected_count == 0
-    assert resumed_result.skipped_count == 1
+    assert resumed_result.admitted_count == 1
+    assert resumed_result.dominated_count == 1
+    assert resumed_result.best.id == result.best.id
 
 
 async def test_low_holdout_coverage_rejects(tmp_path):
@@ -479,4 +488,172 @@ async def test_cheap_challenger_scoring_rejects_like_full_path(tmp_path):
     )
     result = await optimizer.run()
     assert result.accepted_count == 0
+    assert result.best.id == result.baseline.id
+
+
+# -- Pareto frontier ----------------------------------------------------------------------------
+
+FIX_A = "FIX_A"
+FIX_B = "FIX_B"
+
+
+def make_specialist_optimizer(tmp_path, batches, *, max_iterations, run_dir=None):
+    """30 cases split into two groups: `FIX_A` fixes group A, `FIX_B` fixes group B.
+
+    Group B is a minority of every split (4 of 9 selection cases, 5 of 9 holdout cases), so the
+    `FIX_A` edit leads more selection cases and becomes champion first, while the `FIX_B` edit is
+    a specialist the frontier must keep. Only an edit with both phrases fixes every case.
+    """
+    group_b: set[str] = set()
+
+    def specialist_task(candidate):
+        def task(case):
+            text = candidate["instructions"]
+            fixed = FIX_B in text if case.name in group_b else FIX_A in text
+            return {"output": "42" if fixed else "0"}
+
+        return task
+
+    optimizer = Optimizer(
+        make_experiment(30),
+        specialist_task,
+        ArtifactSpace(instructions=TextArtifact("You are unhelpful.")),
+        budget=Budget(max_rollouts=10_000, max_iterations=max_iterations),
+        gate=Gate(runs_per_candidate=1),
+        proposer=ScriptedProposer(batches),
+        base_dir=tmp_path if run_dir is None else None,
+        run_dir=run_dir,
+        max_workers=4,
+    )
+    group_b.update(optimizer.selection_names[:4])
+    group_b.update(optimizer.holdout_names[:5])
+    group_b.update(optimizer.train_names[:6])
+    return optimizer
+
+
+def specialist_batches():
+    return [
+        [
+            Proposal(artifact_name="instructions", new_value=FIX_A, rationale="fix group A"),
+            Proposal(artifact_name="instructions", new_value=FIX_B, rationale="fix group B"),
+        ],
+        [Proposal(artifact_name="instructions", new_value=f"{FIX_A} {FIX_B}", rationale="fix both")],
+    ]
+
+
+def test_cases_split_into_disjoint_train_selection_and_holdout(tmp_path):
+    optimizer = make_optimizer(tmp_path, [], cases=10)
+
+    train, selection, holdout = (
+        set(optimizer.train_names),
+        set(optimizer.selection_names),
+        set(optimizer.holdout_names),
+    )
+    assert train and selection and holdout
+    assert not (train & selection) and not (train & holdout) and not (selection & holdout)
+    assert train | selection | holdout == {f"case_{i}" for i in range(10)}
+    config = optimizer.run_directory.read_config()
+    assert sorted(config["selection_cases"]) == sorted(selection)
+
+
+def test_too_few_cases_rank_the_frontier_on_train(tmp_path, caplog):
+    with caplog.at_level("WARNING"):
+        optimizer = make_optimizer(tmp_path, [], cases=2)
+
+    assert optimizer.selection_names == optimizer.train_names
+    assert "frontier ranks on train" in caplog.text
+
+
+async def test_frontier_keeps_a_specialist_that_the_combination_then_beats(tmp_path):
+    optimizer = make_specialist_optimizer(tmp_path, specialist_batches(), max_iterations=2)
+
+    result = await optimizer.run()
+
+    first, second = result.iterations
+    by_text = {p.values["instructions"]: p for p in first.proposals}
+    fix_a, fix_b = by_text[FIX_A], by_text[FIX_B]
+    # Iteration 1: both edits land on the frontier; only the stronger one challenges and wins.
+    assert first.parent_id == result.baseline.id
+    assert fix_a.status == "accepted" and fix_a.verdict is not None and fix_a.verdict.accepted
+    assert fix_b.status == "admitted" and fix_b.verdict is None
+    # `cases_led` is recorded at admission: FIX_A, admitted against the baseline alone, also
+    # shares the lead on group B's cases (0 == 0); FIX_B then takes those four.
+    assert fix_a.cases_led == sorted(optimizer.selection_names)
+    assert fix_b.cases_led == sorted(optimizer.selection_names[:4])
+    # Iteration 2: the specialist is still a candidate parent, weighted by the cases it leads.
+    assert second.frontier == {fix_a.candidate_id: 5, fix_b.candidate_id: 4}
+    assert second.parent_id in (fix_a.candidate_id, fix_b.candidate_id)
+    combined = second.proposals[0]
+    assert combined.parent_id == second.parent_id
+    assert combined.status == "accepted"
+    # The combination leads every selection case, so it dominates both specialists.
+    assert result.frontier == {combined.candidate_id: sorted(optimizer.selection_names)}
+    assert result.best.id == combined.candidate_id
+    assert result.best_holdout_score == 1.0
+    assert (result.accepted_count, result.rejected_count) == (2, 0)
+    assert (result.admitted_count, result.dominated_count) == (3, 0)
+
+    rows = result.to_rows("proposal")
+    assert {r["parent_id"] for r in rows if r["iteration"] == 2} == {second.parent_id}
+    assert [r["frontier_size"] for r in result.to_rows("iteration")] == [1, 2]
+    json.dumps(rows)
+
+
+async def test_parent_sampling_replays_identically_on_resume(tmp_path):
+    def noise(i):
+        return [Proposal(artifact_name="instructions", new_value=f"noise {i}", rationale="noise")]
+
+    def parents(run_directory):
+        return [e["parent_id"] for e in run_directory.load_events() if e["event"] == "select"]
+
+    straight = make_specialist_optimizer(
+        tmp_path / "straight", specialist_batches()[:1] + [noise(i) for i in range(4)], max_iterations=5
+    )
+    await straight.run()
+
+    first_leg = make_specialist_optimizer(tmp_path / "split", specialist_batches()[:1] + [noise(0)], max_iterations=2)
+    await first_leg.run()
+    second_leg = make_specialist_optimizer(
+        tmp_path / "split", [noise(i) for i in range(1, 4)], max_iterations=5, run_dir=first_leg.run_directory.root
+    )
+    resumed_result = await second_leg.run()
+
+    assert len(parents(straight.run_directory)) == 5
+    assert parents(second_leg.run_directory) == parents(straight.run_directory)
+    # The pool (baseline plus both specialists) was rebuilt from the lineage's admissions.
+    assert set(resumed_result.frontier) == {
+        e["candidate_id"] for e in first_leg.run_directory.load_events() if e["event"] == "admit"
+    }
+
+
+async def test_low_selection_coverage_is_dominated(tmp_path):
+    # An edit that crashes on the selection cases cannot land on the frontier by being ranked
+    # only on the cases it survived.
+    crash_cases = set()
+
+    def crashy_build_task(candidate):
+        def task(case):
+            if "CRASH" in candidate["instructions"] and case.name in crash_cases:
+                raise RuntimeError("boom")
+            return {"output": "42" if MAGIC in candidate["instructions"] else "0"}
+
+        return task
+
+    proposal = Proposal(artifact_name="instructions", new_value=MAGIC + " CRASH", rationale="risky fix")
+    optimizer = Optimizer(
+        make_experiment(),
+        crashy_build_task,
+        ArtifactSpace(instructions=TextArtifact("You are unhelpful.")),
+        budget=Budget(max_rollouts=10_000, max_iterations=1),
+        gate=Gate(runs_per_candidate=2),
+        proposer=ScriptedProposer([[proposal]]),
+        base_dir=tmp_path,
+        max_workers=2,
+    )
+    crash_cases.add(optimizer.selection_names[0])
+
+    result = await optimizer.run()
+
+    assert result.dominated_count == 1
+    assert result.iterations[0].proposals[0].status == "dominated"
     assert result.best.id == result.baseline.id

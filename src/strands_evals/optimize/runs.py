@@ -9,8 +9,8 @@ Layout:
             artifacts/           # materialized workspace for this candidate
             scores/run<i>/       # one task-result cache directory per repeated run
             scores/run<i>.report.json   # the scored EvaluationReport for that run
-        lineage.jsonl            # append-only event log: propose / score / accept / reject
-        best                     # pointer file naming the current incumbent
+        lineage.jsonl            # append-only event log: propose / score / select / admit / dominated / accept / reject
+        best                     # pointer file naming the current champion
 
 Nothing in the directory is ever overwritten: rejected candidates keep their content and scores,
 resume replays `lineage.jsonl`, and rollback is the `best` pointer simply not moving.
@@ -31,9 +31,10 @@ DEFAULT_BASE_DIR = Path(".strands-evals/optimize/runs")
 
 SCHEMA_VERSION = 1
 
-# Lifecycle of a candidate in the run directory. `skipped` means the candidate was scored but
-# never faced the gate, because an earlier candidate was accepted in the same iteration.
-CANDIDATE_STATUSES = ("proposed", "scored", "accepted", "rejected", "skipped")
+# Lifecycle of a candidate in the run directory. `unscored` means the budget ran out before it
+# could be scored, `dominated` that it was scored but did not land on the frontier, `admitted`
+# that it joined the pool, and `accepted` that it also cleared the gate to become champion.
+CANDIDATE_STATUSES = ("proposed", "unscored", "scored", "dominated", "admitted", "accepted")
 
 
 class RunDirectory:
@@ -153,7 +154,7 @@ class RunDirectory:
             return []
         return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
-    # -- incumbent pointer -----------------------------------------------------------
+    # -- champion pointer ------------------------------------------------------------
 
     def set_best(self, candidate_id: str) -> None:
         (self.root / "best").write_text(candidate_id + "\n")

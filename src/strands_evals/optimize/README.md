@@ -1,6 +1,6 @@
 # Optimize
 
-Improve an agent by rewriting its text artifacts — instructions, `SKILL.md` files, tool descriptions, config fields — against the cases and evaluators you already have. The loop builds the agent with a proposed edit, runs your `Experiment` against it, and has an LLM read the failures to propose the next edit. An edit is kept only when it beats the current version on held-out cases across repeated runs. The output is a diff a human reviews and commits. This module does no weight training. The `RewardFunction` scoring contract is shared with trainers that do, which consume it from outside this package.
+Improve an agent by rewriting its text artifacts — instructions, `SKILL.md` files, tool descriptions, config fields — against the cases and evaluators you already have. The loop builds the agent with a proposed edit, runs your `Experiment` against it, and has an LLM read the failures to propose the next edit. Every edit that is the best on at least one case stays on a Pareto frontier the search keeps building from, and an edit only becomes the result (the champion) when it beats the current champion on held-out cases across repeated runs. The output is a diff a human reviews and commits. This module does no weight training. The `RewardFunction` scoring contract is shared with trainers that do, which consume it from outside this package.
 
 **Stability**: public API. Breaking changes go through a deprecation cycle with a `DeprecationWarning` for at least one minor version.
 
@@ -51,12 +51,13 @@ print(result.best.diff())
 
 When you don't need a workspace `root`, a plain mapping works in place of an `ArtifactSpace`: `Optimizer(experiment, build_task, {"instructions": TextArtifact("...")})`.
 
-Every case needs a unique `name`: the optimizer keys its caches and its train/holdout split on case names.
+Every case needs a unique `name`: the optimizer keys its caches, its case split, and its frontier on case names.
 
 ## Reading the result
 
-- `result.summary()` — baseline vs best score on the held-out split, accept/reject/skip counts, spend.
-- `result.best.diff()` — the deliverable: a unified diff against your baseline artifacts.
+- `result.summary()` — baseline vs champion score on the held-out split, accept/reject and admitted/dominated counts, spend.
+- `result.best.diff()` — the deliverable: the champion as a unified diff against your baseline artifacts.
+- `result.frontier` — the final frontier: each member's candidate id and the selection cases it leads.
 - `result.to_rows(grain)` — the run flattened into plot-ready rows (below).
 - `result.to_json(grain, path="run.json")` — the same rows serialized, written to `path` when given.
 - `result.reports(candidate_id)` — the stored `EvaluationReport`s for one candidate, the evals SDK's own report objects.
@@ -69,19 +70,21 @@ Every case needs a unique `name`: the optimizer keys its caches and its train/ho
 | column | meaning | typical graph |
 |---|---|---|
 | `iteration` | 1-based loop index | x-axis |
-| `incumbent_train_score` / `incumbent_holdout_score` | the current best candidate's mean scores on each split | convergence curve; plot both to watch the train/holdout gap (overfitting) |
+| `incumbent_train_score` / `incumbent_holdout_score` | the champion's mean scores on each split at the start of the iteration | convergence curve; plot both to watch the train/holdout gap (overfitting) |
 | `rollouts_cumulative` | total rollouts spent so far | cost-vs-quality curve (`holdout` against this instead of iteration) |
 | `rollouts_spent` | rollouts this iteration | spend per iteration bars |
-| `proposals_count`, `accepted_candidate_id` | how many edits were tried, and which (if any) won | accept markers on the convergence curve |
-| `incumbent_id`, `incumbent_values` | the winning candidate and its full artifact values | annotations / joining rows to candidates |
+| `proposals_count`, `accepted_candidate_id` | how many edits were tried, and which (if any) became champion | accept markers on the convergence curve |
+| `incumbent_id`, `incumbent_values` | the champion and its full artifact values | annotations / joining rows to candidates |
+| `parent_id`, `frontier_size` | the frontier member this iteration's edits came from, and how many members the frontier had | exploration view: how often the search left the champion's line |
 
-`grain="proposal"` gives one row per proposed edit — the gate's view:
+`grain="proposal"` gives one row per proposed edit — the frontier's and the gate's view:
 
 | column | meaning | typical graph |
 |---|---|---|
-| `holdout_score`, `train_score` | the challenger's split means (`train_score` is null under `challenger_holdout_only`) | scatter per iteration, colored by `status` |
-| `mean_diff`, `ci_low`, `ci_high`, `margin` | the paired-bootstrap verdict against the incumbent | the gate plot: `mean_diff` with CI error bars per proposal; accepted = CI entirely above the margin |
-| `status` | `accepted` / `rejected` / `skipped` (never compared: an earlier edit won the iteration) / `unscored` (budget) | color / facet |
+| `train_score`, `selection_score`, `holdout_score` | the candidate's split means (`train_score` is null under `challenger_holdout_only`) | scatter per iteration, colored by `status` |
+| `cases_led` | the selection cases the candidate led when it was admitted (empty when dominated) | specialist view: which cases each edit uniquely helps |
+| `mean_diff`, `ci_low`, `ci_high`, `margin` | the paired-bootstrap verdict against the champion; null unless the candidate challenged it | the gate plot: `mean_diff` with CI error bars per challenge; accepted = CI entirely above the margin |
+| `status` | `accepted` (admitted and became champion) / `admitted` (joined the frontier; lost or never made a champion challenge) / `dominated` (scored, not on the frontier) / `unscored` (budget) | color / facet |
 | `artifact_name` | which artifact the edit touched | per-artifact accept-rate bars (where the leverage is) |
 | `n_cases`, `error_rollouts` | held-out cases compared, and rollouts that crashed | gate-health panel |
 | `candidate_id`, `parent_id`, `rationale`, `values`, `diff`, `verdict_reason` | lineage and the edit itself | tooltips / drill-down |
@@ -104,7 +107,7 @@ ax1.set_xlabel("rollouts spent"); ax1.set_ylabel("score"); ax1.legend(); ax1.set
 
 # 2. the gate: every proposal's paired improvement with its confidence interval
 scored = props[props.mean_diff.notna()].reset_index()
-colors = scored.status.map({"accepted": "tab:green", "rejected": "tab:red"})
+colors = scored.status.eq("accepted").map({True: "tab:green", False: "tab:red"})
 ax2.errorbar(scored.index, scored.mean_diff,
              yerr=[scored.mean_diff - scored.ci_low, scored.ci_high - scored.mean_diff],
              fmt="none", ecolor=colors)
@@ -145,15 +148,23 @@ optimizer = Optimizer.resume(
 result = await optimizer.run()
 ```
 
-Resume validates that the supplied cases and artifact names match the recorded run and refuses otherwise; changed cases need a fresh run, because the recorded train/holdout split would be stale.
+Resume validates that the supplied cases and artifact names match the recorded run and refuses otherwise; changed cases need a fresh run, because the recorded case split would be stale. The pool is rebuilt from the lineage's admissions, and each iteration's parent is sampled from a seed derived from the run seed and the iteration number, so a resumed run picks the same parents an uninterrupted run would have.
 
 The run directory keeps every candidate's workspace and scores for the life of the run. Budget the disk accordingly, and delete run directories you no longer need.
 
-## How acceptance works
+## How the search works
 
-Gate settings live on `Gate` (`runs_per_candidate`, `holdout_fraction`, `margin`, `confidence`, `min_coverage`). Cases split into a training split (the proposer sees its failures) and a held-out split (acceptance is judged only here). Each candidate is scored `runs_per_candidate` times, per-case scores are averaged, and a challenger replaces the incumbent only when the paired per-case improvement on the held-out split clears your `margin` and its bootstrap confidence interval stays above zero. Ties reject. Crashed rollouts are excluded from scores and counted, not scored 0.0, and a challenger missing scores for more than `min_coverage` of the incumbent's held-out cases is rejected outright, so an edit cannot win by crashing the hard cases. Below 5 held-out cases the optimizer logs a warning: small holdouts measurably inflate false-positive accepts.
+Cases split three ways (settings on `Gate`): a training split (the proposer reads its failures), a selection split (`selection_fraction`, the frontier ranks candidates here), and a held-out split (`holdout_fraction`, only the champion gate reads it). No split both chooses and judges. With too few cases for a separate selection split, the training split doubles as it and a warning is logged.
 
-With many cases and LLM judges, challengers can be scored on the holdout only (`Gate(challenger_holdout_only=True)`); an accepted challenger is topped up on the training split afterward, with its holdout scores served from cache.
+Each iteration:
+
+1. **Selection.** The frontier is every candidate in the pool that is the best (within `frontier_eps`) on at least one selection case and is not dominated: no other candidate leads a strict superset of its cases, and on identical lead sets the earlier candidate wins. One frontier member is sampled as the parent, weighted by how many cases it leads, so a specialist that uniquely solves some cases keeps being explored even when its average is mediocre.
+2. **Proposal.** The proposer reads the parent's worst training cases and returns edits of the parent.
+3. **Scoring.** Each edit is scored `runs_per_candidate` times and per-case scores are averaged. Crashed rollouts are excluded and counted, not scored 0.0.
+4. **Admission (loose).** An edit joins the pool when it would land on the frontier and has scores for at least `min_coverage` of its parent's selection cases. A no-op edit ties its parent everywhere and is dominated.
+5. **Champion gate (strict).** The strongest admitted edit challenges the champion only when its selection mean is higher. It becomes champion only when the paired per-case improvement on the held-out split clears your `margin` and its bootstrap confidence interval stays above zero. Ties reject, and a challenger missing scores for more than `min_coverage` of the champion's held-out cases is rejected outright, so an edit cannot win by crashing the hard cases. Below 5 held-out cases the optimizer logs a warning: small holdouts measurably inflate false-positive accepts.
+
+With many cases and LLM judges, challengers can be scored on the selection and held-out splits only (`Gate(challenger_holdout_only=True)`); a candidate is topped up on the training split the first time it is sampled as a parent or becomes champion, with its other scores served from cache.
 
 ## Runtime surfaces, alternative proposer, and reward functions
 
