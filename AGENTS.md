@@ -126,16 +126,23 @@ strands-evals/
 │   │
 │   ├── optimize/                             # Agent optimization (GEPA-style, gated)
 │   │   ├── README.md                         # Module quick-start, cost model, acceptance semantics
-│   │   ├── optimizer.py                      # Optimizer loop + Budget / Gate / result dataclasses
+│   │   ├── optimizer.py                      # The loop: pool, selection, admission, champion gate, results
+│   │   ├── markers.py / factory.py           # Declaration markers and the @tunable / inject mounts
 │   │   ├── artifacts.py                      # Artifact protocol + Text/File/JsonField/Formula adapters, ArtifactSpace
-│   │   ├── candidate.py                      # Content-addressed candidate snapshots + diffs
-│   │   ├── proposer.py                       # Reflection proposer (LLM) + guardrail filtering
-│   │   ├── contrastive.py                    # ContrastiveReflectionProposer (alternative prompt)
-│   │   ├── acceptance.py                     # Paired bootstrap comparison + coverage floor
+│   │   ├── space.py                          # The flat typed parameter space (dotted keys, conditional params)
+│   │   ├── candidate.py                      # Content-addressed typed candidates + diffs
+│   │   ├── execution.py                      # Default rollout, trial statuses, usage metering
+│   │   ├── objectives.py                     # Maximize/Minimize, WeightedSum, AtMost/AtLeast, Projection
+│   │   ├── methods.py                        # Reflection / ContrastiveReflection / TPE methods + guardrails
+│   │   ├── search.py                         # Block, Schedule (Alternate, Joint), Search, default_search
+│   │   ├── frontier.py                       # Case frontier: case leaders, dominance, parent sampling
+│   │   ├── merge.py                          # Variable-wise merge of two frontier members (GEPA crossover)
+│   │   ├── trajectories.py                   # Renders a returned trajectory (Session or messages) for reflection
+│   │   ├── gate.py                           # Gate, Budget, paired bootstrap comparison + coverage floor
 │   │   ├── runs.py                           # Append-only run directory, lineage.jsonl, resume
 │   │   ├── rewards.py                        # RewardFunction + RewardFunctionEvaluator adapter
 │   │   ├── formulas/                         # Runtime hooks with tunable text (from harness-optimizer)
-│   │   └── prompt_templates/proposer/        # proposer_v0 + contrastive_v0 prompt constants
+│   │   └── prompt_templates/proposer/        # proposer_v0/v1 + contrastive_v0/v1 prompt constants
 │   │
 │   ├── detectors/                            # Failure detection + RCA
 │   │   ├── failure_detector.py               # detect_failures (model.stream text mode)

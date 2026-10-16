@@ -12,8 +12,8 @@ Declare what may change about your agent, run the loop against the cases and eva
 | Space | `space.py`, `candidate.py` | The flat typed parameter vocabulary; candidates are typed mappings, hashed and diffed as derived views |
 | Execution | `execution.py` | Run one candidate on one case: default rollout, trial statuses, usage metering |
 | Scoring | `objectives.py` | Objectives and constraints over per-case metrics; constraints only ever reject |
-| Search | `methods.py`, `search.py` | Blocks, methods (`Reflection`, `TPE`), and schedules; this layer proposes and never decides |
-| Acceptance | `gate.py` | The mandatory statistical gate and the rollout-denominated budget |
+| Search | `methods.py`, `search.py`, `frontier.py`, `merge.py` | The case frontier picks the parent (or merges two specialists); blocks, methods (`Reflection`, `TPE`), and schedules propose on it. This layer proposes and never decides |
+| Acceptance | `gate.py` | Admission to the pool, the mandatory statistical gate, and the rollout-denominated budget |
 | Loop | `optimizer.py`, `runs.py` | The iteration loop, run persistence, resume, results |
 
 ## Usage
@@ -93,7 +93,11 @@ The content hash (dedupe, caching, resume) and the diff are derived from this ma
 
 ## Search methods
 
-Numbers and choices default to `TPE` (Optuna's tree-structured Parzen estimator); text defaults to `Reflection` (an LLM reads the training split's failures and the evaluators' written reasons). The default schedule is `Alternate`: one block per iteration, so an accepted candidate changed exactly one block's variables. Every method is told every gated outcome through `observe`, so a Bayesian method updates on gated truth rather than raw means.
+Numbers and choices default to `TPE` (Optuna's tree-structured Parzen estimator); text defaults to `Reflection` (an LLM reads the parent's training-split failures, the evaluators' written reasons, and the rollout's trajectory when your rollout returns `{"output": ..., "trajectory": ...}`). The default schedule is `Alternate`: one block per iteration. Every method is told the outcome of each of its proposals through `observe`, as the selection-split scalar; only the gate reads the holdout. TPE keeps one study per context (the parent's values outside its block), so evidence from different parents is never mixed.
+
+## Selection: the case frontier and merge
+
+Every admitted candidate stays in a pool. The case frontier is the pool members that are best on at least one selection case and are not dominated: no other member leads a strict superset of their cases. Each iteration either merges two frontier members that changed different variables since their latest common ancestor (variable by variable; a choice and its settings move together; at most 5 merges per run, each pair once), or samples one frontier member as the parent, weighted by the cases it leads, and the schedule's block proposes on it. A specialist that uniquely solves some cases keeps being explored even when its average is mediocre, and two specialists can combine into a candidate neither reached alone. This is the case frontier over selection cases, not `Pareto(...)` over objectives. Selection has no configuration in v1.
 
 `TPE` needs the `search` extra: `pip install "strands-evals[search]"`. A space with numeric or choice variables and no optuna fails at construction with that command; assign those variables to `Reflection()` in an explicit `Block` to stay dependency-free.
 
@@ -103,13 +107,16 @@ Price a run before you start: `rollouts = (1 + iterations * proposals_per_iterat
 
 ## How acceptance works
 
-Gate settings live on `Gate` (`runs_per_candidate`, `holdout_fraction`, `margin`, `confidence`, `min_coverage`, `challenger_holdout_only`). Cases split into a training split (reflection sees its failures) and a held-out split (acceptance is judged only here). Each candidate is scored `runs_per_candidate` times, per-case metrics reduce to one scalar through the objectives, constraints reject violators on the holdout, and a challenger replaces the incumbent only when the paired per-case improvement clears the margin and its bootstrap confidence interval stays above zero. Ties reject. Crashed trials are excluded and counted (`TrialStatus`), never scored 0.0, and a challenger missing too many holdout cases is rejected on coverage. The gate always runs and has no bypass; verifiable rewards configure it cheaper with `Gate(runs_per_candidate=1)`.
+Gate settings live on `Gate` (`runs_per_candidate`, `holdout_fraction`, `selection_fraction`, `margin`, `confidence`, `min_coverage`, `challenger_holdout_only`). Cases split into train (reflection reads its failures), selection (the frontier, admission, and the methods' feedback use it), and holdout (only the gate reads it); with too few cases, train doubles as selection, with a warning. Each candidate is scored `runs_per_candidate` times and per-case metrics reduce to one scalar through the objectives.
+
+Acceptance has two steps. **Admission** (loose, selection split): a proposal joins the pool when it meets every constraint (point estimate), covers `min_coverage` of its parent's selection cases, and would land on the case frontier; otherwise it is `infeasible` or `dominated`, stored but never a parent. **The champion gate** (strict, holdout): only the admitted proposal with the best selection mean, and only if that mean beats the champion's, challenges. It must meet every constraint on the holdout, and the paired per-case improvement must clear the margin with its bootstrap confidence interval above zero. Ties reject. One challenger per iteration, chosen on selection and tested on the holdout, keeps the test unbiased. Crashed trials are excluded and counted (`TrialStatus`), never scored 0.0, and a challenger missing too many holdout cases is rejected on coverage. The gate always runs and has no bypass; verifiable rewards configure it cheaper with `Gate(runs_per_candidate=1)`.
 
 Before you merge an accepted diff, run one fresh evaluation on cases the optimizer never saw. The gate defends against judge noise, but repeated tests against the same held-out split can still overfit it slowly.
 
 ## Reading the result
 
 - `result.summary()`, `result.best.diff()`, `result.best.values`
+- `result.frontier`: each final case-frontier member and the selection cases it leads
 - `result.to_rows(grain)` / `result.to_json(grain, path=...)` with `grain` of `"iteration"`, `"proposal"`, or `"case"`; proposal rows carry the gate verdict, constraint violations, and the candidate's full typed values
 - `result.reports(candidate_id)` for the stored `EvaluationReport`s
 - Runs persist under `.strands-evals/optimize/runs/<run_id>/` (append-only). `Optimizer.resume(run_dir, experiment=..., factory=...)` continues a crashed or budget-stopped run with every already-scored candidate a cache hit.

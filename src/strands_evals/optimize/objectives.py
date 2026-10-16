@@ -11,7 +11,8 @@ objectives to one scalar (`WeightedSum`, and later `Chebyshev` / `Lexicographic`
 acceptance guarantee; `Pareto` is a reporting mode and does not gate.
 
 One invariant holds without exception: a constraint can only reject a candidate, never accept
-one. Violations are checked on the same held-out cases as the objective.
+one. Violations are checked on the selection split at admission (so a violator never joins the
+pool) and on the held-out split at the gate, the same cases as the objective there.
 """
 
 import logging
@@ -126,7 +127,7 @@ class Derived:
 
 @dataclass(frozen=True)
 class Constraint:
-    """A bound on one metric's held-out mean. A violated constraint rejects, nothing more."""
+    """A bound on one metric's mean over a split's cases. A violated constraint rejects, nothing more."""
 
     metric: str
     bound: float
@@ -142,12 +143,12 @@ class Constraint:
 
 
 def AtMost(metric: str, bound: float) -> Constraint:  # noqa: N802 - public API reads as a declaration
-    """The metric's held-out mean must stay at or below `bound`, e.g. `AtMost("tokens", 4000)`."""
+    """The metric's mean must stay at or below `bound`, e.g. `AtMost("tokens", 4000)`."""
     return Constraint(metric=metric, bound=bound, direction=1)
 
 
 def AtLeast(metric: str, bound: float) -> Constraint:  # noqa: N802 - public API reads as a declaration
-    """The metric's held-out mean must stay at or above `bound`, e.g. `AtLeast("Safety", 0.95)`."""
+    """The metric's mean must stay at or above `bound`, e.g. `AtLeast("Safety", 0.95)`."""
     return Constraint(metric=metric, bound=bound, direction=-1)
 
 
@@ -157,9 +158,14 @@ class Projection:
     Args:
         objectives: One `Objective`, a `Combine` of several, or `None` for the default objective
             (maximize the mean of all evaluator scores).
-        constraints: Bounds checked on the held-out split. They only ever reject.
+        constraints: Bounds checked on the selection split at admission and on the held-out split
+            at the gate. They only ever reject.
         evaluator_names: The experiment's evaluator names, used to validate metric references and
             to compute the default objective.
+
+    An evaluator can be named with or without its `Evaluator` suffix: `Maximize("Helpfulness")`
+    reads `HelpfulnessEvaluator`'s scores. A short name that is itself another evaluator's name,
+    or a usage metric, keeps its own meaning.
     """
 
     def __init__(
@@ -172,7 +178,13 @@ class Projection:
         self.objectives = objectives
         self.constraints = tuple(constraints)
         self.evaluator_names = list(evaluator_names or [])
-        known = set(self.evaluator_names) | set(USAGE_METRICS)
+        reserved = set(self.evaluator_names) | set(USAGE_METRICS)
+        self._aliases = {
+            name.removesuffix("Evaluator"): name
+            for name in self.evaluator_names
+            if name.endswith("Evaluator") and name != "Evaluator" and name.removesuffix("Evaluator") not in reserved
+        }
+        known = reserved | set(self._aliases)
         for metric in self.metric_names() + [c.metric for c in self.constraints]:
             if known and metric not in known:
                 raise ValueError(
@@ -186,31 +198,34 @@ class Projection:
             return self.objectives.metric_names()
         return [self.objectives.metric]
 
+    def _with_aliases(self, case_metrics: Mapping[str, float]) -> Mapping[str, float]:
+        """`case_metrics` with each evaluator's short name added next to its full name."""
+        aliased = {alias: case_metrics[name] for alias, name in self._aliases.items() if name in case_metrics}
+        return {**case_metrics, **aliased} if aliased else case_metrics
+
     def scalar(self, case_metrics: Mapping[str, float]) -> float | None:
         """The gate scalar for one case; `None` when a needed metric was not measured."""
         if self.objectives is None:
             values = [case_metrics[name] for name in self.evaluator_names if name in case_metrics]
             return fmean(values) if values else None
-        if isinstance(self.objectives, Combine):
-            return self.objectives.scalar(case_metrics)
-        return self.objectives.scalar(case_metrics)
+        return self.objectives.scalar(self._with_aliases(case_metrics))
 
-    def check_constraints(self, holdout_metrics: Mapping[str, Mapping[str, float]]) -> list[str]:
-        """Evaluate every constraint on held-out per-case metrics; the violated ones, described.
+    def check_constraints(self, split_metrics: Mapping[str, Mapping[str, float]]) -> list[str]:
+        """Evaluate every constraint on one split's per-case metrics; the violated ones, described.
 
         Args:
-            holdout_metrics: Case name to that case's metric values, held-out cases only.
+            split_metrics: Case name to that case's metric values, for the cases of one split
+                (selection at admission, holdout at the gate).
         """
         violated: list[str] = []
+        aliased = [self._with_aliases(metrics) for metrics in split_metrics.values()]
         for constraint in self.constraints:
-            values = [
-                metrics[constraint.metric] for metrics in holdout_metrics.values() if constraint.metric in metrics
-            ]
+            values = [metrics[constraint.metric] for metrics in aliased if constraint.metric in metrics]
             if not values:
                 violated.append(f"{constraint.describe()}: metric never measured")
                 continue
             mean_value = fmean(values)
             amount = constraint.violation(mean_value)
             if amount > 0:
-                violated.append(f"{constraint.describe()}: held-out mean {mean_value:.4g} violates by {amount:.4g}")
+                violated.append(f"{constraint.describe()}: mean {mean_value:.4g} violates by {amount:.4g}")
         return violated

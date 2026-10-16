@@ -42,21 +42,24 @@ class Gate:
     Attributes:
         runs_per_candidate: k repeated scoring runs per candidate. The default of 3 suits
             LLM-judge scoring; 1 suits verifiable rewards.
-        holdout_fraction: Fraction of cases held out for acceptance. The proposer only sees
-            failures from the training split.
+        holdout_fraction: Fraction of cases held out for acceptance. Only the gate reads them.
+        selection_fraction: Fraction of cases the case frontier, admission, and the methods'
+            feedback use. When too few cases remain for a separate selection split, the training
+            split doubles as the selection split and a warning is logged.
         margin: Minimum mean held-out improvement an edit must clear to be accepted.
         confidence: Confidence level for the bootstrap interval in acceptance.
         min_coverage: Minimum fraction of the incumbent's held-out cases a challenger must have
             scores for. Below the floor the challenger is rejected, so an edit that crashes the
             agent on the hardest cases cannot win by being compared only on the cases it
             survived.
-        challenger_holdout_only: Score challengers on the held-out split only, cutting the
-            dominant per-challenger cost. An accepted challenger is topped up on the training
-            split afterward (its holdout cases hit the per-case cache).
+        challenger_holdout_only: Score proposals on the selection and held-out splits only,
+            cutting the per-proposal cost. A candidate is topped up on the training split when it
+            is sampled as a parent or becomes champion (its other cases hit the per-case cache).
     """
 
     runs_per_candidate: int = 3
     holdout_fraction: float = 0.3
+    selection_fraction: float = 0.3
     margin: float = 0.0
     confidence: float = 0.95
     min_coverage: float = 0.9

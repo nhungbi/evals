@@ -3,17 +3,21 @@
 Layout:
 
     <base>/<run_id>/
-        run.json                 # config, budget, train/holdout split, baseline candidate id
+        run.json                 # config, budget, train/selection/holdout split, space, blocks
         candidates/<cand_id>/
-            manifest.json        # parent id, rationale, per-artifact hashes, status
+            manifest.json        # parent id(s), rationale, per-value hashes, status
+            values.json          # the typed values
+            usage.json           # per-case usage metrics
             artifacts/           # materialized workspace for this candidate
             scores/run<i>/       # one task-result cache directory per repeated run
             scores/run<i>.report.json   # the scored EvaluationReport for that run
-        lineage.jsonl            # append-only event log: propose / score / accept / reject
-        best                     # pointer file naming the current incumbent
+        lineage.jsonl            # append-only event log: propose, score, select, merge, admit,
+                                 # dominated, infeasible, accept, reject, constraint_reject
+        best                     # pointer file naming the current champion
 
-Nothing in the directory is ever overwritten: rejected candidates keep their content and scores,
-resume replays `lineage.jsonl`, and rollback is the `best` pointer simply not moving.
+Rejected candidates keep their content and scores, resume replays `lineage.jsonl` (the pool is
+rebuilt from its `admit` and `accept` events), and rollback is the `best` pointer simply not
+moving.
 """
 
 import hashlib
@@ -31,9 +35,11 @@ DEFAULT_BASE_DIR = Path(".strands-evals/optimize/runs")
 
 SCHEMA_VERSION = 1
 
-# Lifecycle of a candidate in the run directory. `skipped` means the candidate was scored but
-# never faced the gate, because an earlier candidate was accepted in the same iteration.
-CANDIDATE_STATUSES = ("proposed", "scored", "accepted", "rejected", "skipped")
+# Lifecycle of a candidate in the run directory. `unscored` means the budget ran out first;
+# `infeasible` that it broke a constraint on the selection split; `dominated` that it was scored
+# but did not land on the case frontier; `admitted` that it joined the pool (it may have
+# challenged the champion and lost); `accepted` that it also cleared the gate to become champion.
+CANDIDATE_STATUSES = ("proposed", "unscored", "scored", "infeasible", "dominated", "admitted", "accepted")
 
 
 class RunDirectory:
@@ -93,9 +99,11 @@ class RunDirectory:
         *,
         parent_id: str | None,
         rationale: str | None,
-        values: dict[str, str],
+        values: dict[str, Any],
         status: str,
+        parent_ids: list[str] | None = None,
     ) -> None:
+        """Write a candidate's manifest. `parent_ids` is recorded only for merges (two parents)."""
         if status not in CANDIDATE_STATUSES:
             raise ValueError(f"status must be one of {CANDIDATE_STATUSES}, got {status!r}")
         directory = self.candidate_dir(candidate_id)
@@ -103,6 +111,7 @@ class RunDirectory:
         manifest = {
             "candidate_id": candidate_id,
             "parent_id": parent_id,
+            **({"parent_ids": list(parent_ids)} if parent_ids else {}),
             "rationale": rationale,
             "value_hashes": {
                 name: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
