@@ -10,7 +10,7 @@ from rich.console import Console
 
 from ...types.evaluation import EvaluationOutput
 from ...types.evaluation_report import EvaluationReport
-from .strategies.base import RUN_RESULTS
+from .strategies.base import ATTACKER_REFUSED, RUN_RESULTS
 
 _console = Console()
 
@@ -31,6 +31,7 @@ class AttackResult:
     scores: dict[str, float] = field(default_factory=dict)
     passes: dict[str, bool] = field(default_factory=dict)
     reasons: dict[str, str] = field(default_factory=dict)
+    attacker_refused: bool = False
 
     @property
     def score(self) -> float:
@@ -43,13 +44,15 @@ class AttackResult:
 
     @property
     def errored(self) -> bool:
-        """True when evaluators reported on the case but none produced a judgment.
+        """True when evaluators reported on the case but none produced a judgment, or the attacker refused
+        and no evaluator found a breach.
 
         Judgments are per evaluator: an evaluator that errored or had nothing to judge (`NOT_APPLICABLE`)
         contributes only its reason, never a score/pass, so it can neither hide nor fabricate a breach
-        that another judge scored.
+        that another judge scored. An attacker that declined its role never fully tested the target, so a
+        defended verdict is inconclusive; a breach in the turns that were sent still stands.
         """
-        return bool(self.reasons) and not self.passes
+        return (bool(self.reasons) and not self.passes) or (self.attacker_refused and self.passed)
 
     @property
     def state(self) -> str:
@@ -149,6 +152,7 @@ class RedTeamReport(EvaluationReport):
                     backtracks=run_results.get("backtracks"),
                     conversation=case_data.get("actual_output") or [],
                     pruned_branches=run_results.get("pruned_branches") or [],
+                    attacker_refused=bool(run_results.get(ATTACKER_REFUSED)),
                 ),
             )
             result.reasons[evaluator] = self.reasons[i]

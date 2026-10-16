@@ -17,7 +17,7 @@ from strands import Agent
 from strands.models.model import Model
 
 from ...utils import _put_model_field
-from ..base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
+from ..base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 from . import crescendo_v0
 
 if TYPE_CHECKING:
@@ -181,12 +181,18 @@ class CrescendoStrategy(AttackStrategy):
         target_calls = 0
         score: float | None = None
         succeeded = False
+        attacker_refused = False
 
         for _ in range(turn_cap):
             question = gen_escalating_question(attacker, goal, conversation, last_response)
             if question is None or not question.strip():
                 parse_failures += 1
                 logger.warning("reason=<parse_failure> | attacker produced no question | ending case early")
+                break
+            if self._is_attacker_refusal(question, resolved_model):
+                attacker_refused = True
+                conversation.append({"role": ATTACKER_REFUSED_ROLE, "content": question})
+                logger.warning("reason=<attacker_refused> | attacker declined its role | ending case early")
                 break
 
             # Snapshot before the risky turn so a refusal can be rolled back.
@@ -233,6 +239,7 @@ class CrescendoStrategy(AttackStrategy):
                 "target_calls": target_calls,
                 "backtracks": backtracks,
                 "parse_failures": parse_failures,
+                ATTACKER_REFUSED: attacker_refused,
             },
         )
 

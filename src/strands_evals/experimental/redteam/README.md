@@ -88,7 +88,21 @@ task, wrap a freshly built target with `as_target_session(target)`: an `Agent` b
 
 Each strategy accepts a `max_turns=` kwarg (its own per-attack ceiling); the built-in task additionally caps every strategy at a hard `MAX_ALLOWED_TURNS = 50` (`strategies/base.py`, exported from `strands_evals.experimental.redteam`), so a strategy configured higher will be silently clamped. A custom task can omit `run_attack`'s `max_turns`, which defaults to that ceiling. A custom `AttackStrategy` subclass should declare the same default (`max_turns: int = MAX_ALLOWED_TURNS`); one that declares `max_turns: int` without it still works with `RedTeamExperiment`, which always passes the value, but a custom task must pass `max_turns=` explicitly. Pass `label="..."` to compare two instances of the same strategy in one experiment (e.g. `CrescendoStrategy(max_turns=5, label="cresc_short")`); duplicate labels raise at construction.
 
-`PromptStrategy` (a no-attacker-LLM, system-prompt-template strategy) and the `BUILTIN_STRATEGIES` registry are the extension points for adding new template-driven strategies without subclassing — see `strategies/prompt_strategy/`. The full set of exported symbols (experiment, cases, evaluator, target sessions) is the `__all__` of `strands_evals.experimental.redteam`.
+`PromptStrategy` (a system-prompt-template strategy whose attacker is an `ActorSimulator` LLM) and the `BUILTIN_STRATEGIES` registry are the extension points for adding new template-driven strategies without subclassing — see `strategies/prompt_strategy/`. The full set of exported symbols (experiment, cases, evaluator, target sessions) is the `__all__` of `strands_evals.experimental.redteam`.
+
+### Choosing an attacker model
+
+`CrescendoStrategy`, `GoatStrategy`, `PairStrategy` and `PromptStrategy` use an LLM to write the attack. A strongly safety-tuned model can decline that role, which would otherwise look like a target that defended itself. Choose an attacker model that will play the role reliably — less safety-tuned or open-weight models (for example, older Qwen or DeepSeek releases) refuse less often than frontier assistant models. Set it per strategy, so the `AttackSuccessEvaluator` judge can stay a strong model:
+
+```python
+experiment = RedTeamExperiment(
+    cases=cases,
+    attack_strategies=[CrescendoStrategy(model=attacker_model), GoatStrategy(model=attacker_model)],
+    model=judge_model,  # judge, and attacker for any strategy without its own model
+)
+```
+
+Every attacker message is checked by an LLM judge (the attacker's model) before it is sent. If the attacker declined its role, the attack stops without sending that message (it is kept as a final `attacker_refused` conversation turn, shown by `display(verbose=True)`), and the run stats carry `attacker_refused=True`. The `AttackSuccessEvaluator` still judges the turns that were sent: a breach there is reported as a breach, but a clean result is reported as errored (`ERROR` / `err !`) — excluded from the ASR, never counted as defended. Many such cases mean the attacker model needs replacing, not that the target is robust. `BadLikertJudgeStrategy` and `SequentialBreakStrategy` use fixed templates and cannot refuse.
 
 ## Risk categories
 

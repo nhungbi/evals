@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, Field
+from strands import Agent
 from strands.models.model import Model
 
 from ....types import EnvironmentState
+from ._common import ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT
 
 if TYPE_CHECKING:
     from ..case import RedTeamCase
     from .target_session import TargetSession
+
+logger = logging.getLogger(__name__)
 
 # Default `max_turns` for `run_attack`, and the hard ceiling the built-in task always passes. A strategy's own
 # ctor `max_turns` is its per-attack budget and wins when smaller.
@@ -20,6 +26,20 @@ MAX_ALLOWED_TURNS = 50
 
 # Name of the task-output `environment_state` entry `RedTeamReport` reads run stats from.
 RUN_RESULTS = "redteam_run_results"
+
+# Run-stats key a strategy sets when its attacker model declined its role. The target was never fully
+# tested, so `AttackSuccessEvaluator` and `RedTeamReport` treat the attack as inconclusive, never defended.
+ATTACKER_REFUSED = "attacker_refused"
+
+# Conversation role of the refused attacker message a strategy keeps for debugging; it was never sent to
+# the target, so it is the last entry and has no target reply.
+ATTACKER_REFUSED_ROLE = "attacker_refused"
+
+
+class AttackerRefusalRating(BaseModel):
+    """Structured judge output: did the attacker decline its task?"""
+
+    is_refusal: bool = Field(description="True if the attacker declined its task instead of writing the message")
 
 
 @dataclass
@@ -30,7 +50,8 @@ class AttackRunResult:
     `AttackSuccessEvaluator` over the trace.
 
     Attributes:
-        conversation: Ordered attacker/target turns; mapped to `output`.
+        conversation: Ordered attacker/target turns; mapped to `output`. When the attacker declined its role,
+            a final `ATTACKER_REFUSED_ROLE` entry holds the refused message, which was never sent.
         strategy_succeeded: The strategy's own early-stop signal, not the verdict.
         strategy_score: The strategy's internal stop-decision score, if any.
         metadata: Free-form run details (e.g. `turns_used`, `backtracks`).
@@ -112,6 +133,32 @@ class AttackStrategy(ABC):
 
     def reset(self) -> None:  # noqa: B027
         """Per-case reset hook; no-op by default. Override only if `self` holds mutable state."""
+
+    def _is_attacker_refusal(self, message: str, model: Model | str | None) -> bool:
+        """Return True if the attacker's `message` declines its role, judged by a fresh LLM judge.
+
+        Strategies with an attacker model call this on each message before sending it. When it fires, they
+        set `ATTACKER_REFUSED` in their run stats and keep the message as a final `ATTACKER_REFUSED_ROLE`
+        conversation entry instead of sending it: sent to the target, a refusal would read as a defended
+        target. Every message is judged, since a phrase prefilter would let a refusal without a
+        known phrase through; only the message is sent, so the call stays small. A judge that fails keeps
+        the turn rather than abort the case and lose the turns already collected.
+
+        Args:
+            message: The attacker's message, before it is sent to the target.
+            model: Model for the judge.
+        """
+        judge = Agent(model=model, system_prompt=ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT, callback_handler=None)
+        try:
+            result = judge(f"# Attacker Message\n{message}", structured_output_model=AttackerRefusalRating)
+        except Exception as e:
+            logger.warning("error=<%s> | refusal judge failed | keeping turn", e)
+            return False
+        rating = result.structured_output
+        if rating is None:
+            logger.warning("reason=<parse_failure> | refusal judge produced no structured output | keeping turn")
+            return False
+        return bool(rating.is_refusal)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the strategy's static config.

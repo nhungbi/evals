@@ -9,7 +9,7 @@ from strands.models.model import Model
 
 from .....simulation.actor_simulator import ActorSimulator
 from .....types.simulation import ActorProfile
-from ..base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
+from ..base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 
 if TYPE_CHECKING:
     from ...case import RedTeamCase
@@ -65,7 +65,9 @@ class PromptStrategy(AttackStrategy):
         )
 
         conversation: list[dict] = []
+        # The opening message is the case input; only the simulator's own messages need the refusal check.
         attacker_message: str = initial_query
+        attacker_refused = False
 
         while simulator.has_next():
             try:
@@ -87,8 +89,16 @@ class PromptStrategy(AttackStrategy):
             if not attacker_message.strip():
                 logger.warning("reason=<empty_message> | attacker produced empty message | ending case early")
                 break
+            if self._is_attacker_refusal(attacker_message, model):
+                attacker_refused = True
+                conversation.append({"role": ATTACKER_REFUSED_ROLE, "content": attacker_message})
+                logger.warning("reason=<attacker_refused> | attacker declined its role | ending case early")
+                break
 
-        return AttackRunResult(conversation=conversation, metadata={"turns_used": len(conversation) // 2})
+        return AttackRunResult(
+            conversation=conversation,
+            metadata={"turns_used": len(conversation) // 2, ATTACKER_REFUSED: attacker_refused},
+        )
 
     def to_dict(self) -> dict[str, Any]:
         out = super().to_dict()

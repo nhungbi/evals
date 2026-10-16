@@ -116,6 +116,7 @@ def _strategy(**kwargs) -> PairStrategy:
     strat = PairStrategy(**kwargs)
     strat._build_attacker = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
     strat._build_judge = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
+    strat._is_attacker_refusal = MagicMock(return_value=False)  # type: ignore[method-assign]
     return strat
 
 
@@ -293,7 +294,13 @@ def test_returns_attack_run_result_shape():
     assert isinstance(result, AttackRunResult)
     # Full-dict equality pins the values, not just the keys -- notably parse_failures == 0, the
     # signal of a real (non-swallowed) run.
-    assert result.metadata == {"turns_used": 1, "target_calls": 1, "iterations": 1, "parse_failures": 0}
+    assert result.metadata == {
+        "turns_used": 1,
+        "target_calls": 1,
+        "iterations": 1,
+        "parse_failures": 0,
+        "attacker_refused": False,
+    }
     assert result.pruned_branches == []
 
 
@@ -383,6 +390,27 @@ def test_prompt_parse_failure_ends_early():
     assert result.metadata["parse_failures"] == 1
     assert result.conversation == []
     assert result.metadata["target_calls"] == 0
+    assert result.strategy_succeeded is False
+
+
+def test_attacker_refusal_ends_case_without_sending_it():
+    """An attacker that declines its role stops the attack; the refusal never reaches the target."""
+    strat = _strategy(max_turns=5)
+    strat._is_attacker_refusal = MagicMock(side_effect=[False, True])  # type: ignore[method-assign]
+    sent: list[str] = []
+    with (
+        patch(f"{_PAIR}.gen_refined_prompt", side_effect=["p1", "I cannot write this prompt"]),
+        patch(f"{_PAIR}.success_score", return_value=(0.0, 1)),
+    ):
+        result = strat.run_attack(_case(), _session(lambda m: sent.append(m) or "reply"), max_turns=10)
+    assert sent == ["p1"]
+    assert result.conversation == [
+        {"role": "attacker", "content": "p1"},
+        {"role": "target", "content": "reply"},
+        {"role": "attacker_refused", "content": "I cannot write this prompt"},  # kept, never sent
+    ]
+    assert result.metadata["attacker_refused"] is True
+    assert result.metadata["target_calls"] == 1
     assert result.strategy_succeeded is False
 
 
@@ -523,6 +551,7 @@ def test_reused_instance_builds_fresh_agents_each_case_without_reset():
     the SDK ``Agent`` ctor (NOT the _build_* methods) so the REAL build bodies run -- reintroducing
     any instance/per-case judge cache OR a cross-case attacker cache drops the count and fails."""
     strat = PairStrategy()
+    strat._is_attacker_refusal = MagicMock(return_value=False)  # type: ignore[method-assign]
 
     def make_agent(**_kw):
         # Built Agent scores raw 1 -> normalized 0.0 (never early-stops), so every turn scores and
