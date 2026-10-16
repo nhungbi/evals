@@ -211,6 +211,100 @@ def test_cross_product_expands_cases():
     assert sorted(captured) == ["c0__cre-10", "c0__cre-30", "c1__cre-10", "c1__cre-30"]
 
 
+def test_cross_product_gives_each_variant_its_own_session_id():
+    """Variants of one case get distinct session_ids; the base cases keep theirs."""
+    base_cases = [_case("c0"), _case("c1")]
+    base_ids = [case.session_id for case in base_cases]
+    captured: dict[str, str] = {}
+
+    def task(case):
+        captured[case.name] = case.session_id
+        return {"output": []}
+
+    exp = RedTeamExperiment(
+        cases=base_cases,
+        attack_strategies=[_StubStrategy(label="cre-10"), _StubStrategy(label="cre-30")],
+    )
+    exp.run_evaluations(task=task)
+
+    assert len(captured) == 4
+    assert len(set(captured.values())) == 4
+    assert set(captured.values()).isdisjoint(base_ids)
+    assert [case.session_id for case in exp.cases] == base_ids
+
+
+def test_cross_product_variant_session_id_is_stable_for_a_pinned_base():
+    """A pinned base session_id yields the same variant session_ids on every run."""
+    case = _case("c0")
+    case.session_id = "pinned-1"
+    exp = RedTeamExperiment(
+        cases=[case],
+        attack_strategies=[_StubStrategy(label="cre-10"), _StubStrategy(label="cre-30")],
+    )
+    runs: list[dict[str, str]] = []
+    for _ in range(2):
+        captured: dict[str, str] = {}
+
+        def task(case, captured=captured):
+            captured[case.name] = case.session_id
+            return {"output": []}
+
+        exp.run_evaluations(task=task)
+        runs.append(captured)
+
+    assert runs[0] == runs[1]
+    assert runs[0]["c0__cre-10"] != runs[0]["c0__cre-30"]
+
+
+def test_cross_product_attaches_each_variant_strategy():
+    """A custom task reads `case.strategy`: the experiment's own instance, matching the variant's label."""
+    strategies = [_StubStrategy(label="cre-10"), _StubStrategy(label="cre-30")]
+    captured: dict[str, AttackStrategy] = {}
+
+    def task(case):
+        assert case.strategy.label == case.metadata["strategy"]
+        captured[case.name] = case.strategy
+        return {"output": []}
+
+    base_cases = [_case("c0")]
+    exp = RedTeamExperiment(cases=base_cases, attack_strategies=strategies)
+    exp.run_evaluations(task=task)
+
+    assert captured["c0__cre-10"] is strategies[0]
+    assert captured["c0__cre-30"] is strategies[1]
+    with pytest.raises(AttributeError, match="has no strategy"):
+        _ = base_cases[0].strategy
+
+
+def test_cross_product_keeps_plain_cases_working():
+    """A plain `Case` has no `strategy` field; expansion still names and tags it for a custom task."""
+    captured: list[str] = []
+
+    def task(case):
+        captured.append(case.metadata["strategy"])
+        return {"output": []}
+
+    with pytest.warns(DeprecationWarning, match="RedTeamCase"):
+        exp = RedTeamExperiment(
+            cases=[Case(name="c0", input="hello")],
+            attack_strategies=[_StubStrategy(label="cre-10")],
+        )
+    exp.run_evaluations(task=task)
+
+    assert captured == ["cre-10"]
+
+
+def test_default_task_rejects_plain_cases():
+    """The built-in task needs `RedTeamCase` (strategies read `case.config`), so a plain `Case` fails up front."""
+    with pytest.warns(DeprecationWarning, match="RedTeamCase"):
+        exp = RedTeamExperiment(
+            cases=[Case(name="plain", input="hello")],
+            attack_strategies=[_StubStrategy(label="cre-10")],
+        )
+    with pytest.raises(TypeError, match="'plain' is a Case.*RedTeamCase.*custom `task`"):
+        exp.run_evaluations(agent_factory=_FakeSession)
+
+
 async def test_run_evaluations_async_returns_report():
     exp = RedTeamExperiment(cases=[_case()], attack_strategies=[_StubStrategy()])
     report = await exp.run_evaluations_async(agent_factory=_FakeSession)
@@ -464,9 +558,18 @@ def test_from_dict_round_trip_runs(tmp_path):
     with pytest.raises(ValueError, match="task.*agent_factory"):
         loaded.run_evaluations()
 
-    # A stub task skips real LLM calls.
-    report = loaded.run_evaluations(task=lambda case: {"output": []})
+    # A stub task skips real LLM calls. The strategy isn't saved on the cases, so the run re-attaches
+    # the reloaded instance to each variant.
+    seen: list[AttackStrategy] = []
+
+    def task(case):
+        seen.append(case.strategy)
+        return {"output": []}
+
+    report = loaded.run_evaluations(task=task)
     assert isinstance(report, RedTeamReport)
+    assert [s.label for s in seen] == ["cre", "cre"]
+    assert all(s is loaded.attack_strategies[0] for s in seen)
 
 
 def test_from_dict_accepts_custom_strategies(tmp_path):

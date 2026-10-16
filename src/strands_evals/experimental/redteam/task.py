@@ -12,16 +12,14 @@ from strands.multiagent.base import MultiAgentBase
 
 from .case import RedTeamCase
 from .strategies import AttackStrategy
-from .strategies.target_session import StrandsAgentSession, StrandsMultiAgentSession, TargetSession
+from .strategies.base import MAX_ALLOWED_TURNS as MAX_ALLOWED_TURNS  # re-exported for the pre-move import path
+from .strategies.target_session import StrandsMultiAgentSession, TargetSession, _build_session, as_target_session
 
 logger = logging.getLogger(__name__)
-
-MAX_ALLOWED_TURNS = 50
 
 
 def _build_attacker_task(
     agent: Agent | MultiAgentBase | TargetSession | None,
-    by_label: dict[str, AttackStrategy],
     *,
     agent_factory: Callable[[], Agent | MultiAgentBase | TargetSession] | None = None,
     model: Model | str | None = None,
@@ -29,8 +27,8 @@ def _build_attacker_task(
 ) -> Callable[[RedTeamCase], dict]:
     """Build a `task(case) -> {"output", "trajectory", "environment_state"}` callable.
 
-    Looks up each case's strategy by `metadata["strategy"]` and delegates the multi-turn loop to
-    `strategy.run_attack`, injecting a `TargetSession`. `MAX_ALLOWED_TURNS` is the hard ceiling.
+    Reads each case's strategy from `case.strategy` (set by `RedTeamExperiment`) and delegates the multi-turn
+    loop to `strategy.run_attack`, injecting a `TargetSession`. `MAX_ALLOWED_TURNS` is the hard ceiling.
 
     The returned dict holds:
         output: The attacker/target conversation.
@@ -39,7 +37,6 @@ def _build_attacker_task(
 
     Args:
         agent: The shared target for sequential runs. Required when `agent_factory` is None.
-        by_label: Strategy registry keyed by `metadata["strategy"]` label.
         agent_factory: Zero-arg callable returning a fresh target for each case. Required for parallel
             runs (`parallel=True`); takes precedence over `agent` when both are set.
         model: Model passed through to `strategy.run_attack` for strategy-internal LLM calls.
@@ -57,7 +54,6 @@ def _build_attacker_task(
         return _build_per_case_task_fn(
             agent=agent,
             agent_factory=agent_factory,
-            by_label=by_label,
             model=model,
         )
 
@@ -65,7 +61,6 @@ def _build_attacker_task(
     # None), and `agent_factory is not None` would have routed us to the per-case builder above.
     return _build_shared_target_task_fn(
         agent=agent,  # type: ignore[arg-type]
-        by_label=by_label,
         model=model,
     )
 
@@ -73,7 +68,6 @@ def _build_attacker_task(
 def _build_shared_target_task_fn(
     *,
     agent: Agent | MultiAgentBase | TargetSession,
-    by_label: dict[str, AttackStrategy],
     model: Model | str | None,
 ) -> Callable[[RedTeamCase], dict]:
     """Build a task fn that drives one shared target across cases, rewinding to a fixed baseline.
@@ -90,7 +84,7 @@ def _build_shared_target_task_fn(
         initial_snapshot = None
 
     def task_fn(case: RedTeamCase) -> dict:
-        strategy = _resolve_case_strategy(case, by_label)
+        strategy = case.strategy
         strategy.reset()
 
         session = _build_session(agent, baseline=initial_snapshot)
@@ -105,7 +99,6 @@ def _build_per_case_task_fn(
     *,
     agent: Agent | MultiAgentBase | TargetSession | None,
     agent_factory: Callable[[], Agent | MultiAgentBase | TargetSession] | None,
-    by_label: dict[str, AttackStrategy],
     model: Model | str | None,
 ) -> Callable[[RedTeamCase], dict]:
     """Build a per-case task fn that constructs its own target every case.
@@ -117,12 +110,12 @@ def _build_per_case_task_fn(
     make_target = _resolve_target_source(agent=agent, agent_factory=agent_factory)
 
     def task_fn(case: RedTeamCase) -> dict:
-        strategy = _resolve_case_strategy(case, by_label)
+        strategy = case.strategy
         strategy.reset()
 
         # No baseline: each case starts from a freshly built target, and `session.reset()` only
         # needs to clear the per-case trace.
-        session = _build_session(make_target(), baseline=None)
+        session = as_target_session(make_target())
         session.reset()
 
         return _run_attack(strategy, case, session, model=model)
@@ -142,6 +135,7 @@ def _run_attack(
     Errors propagate: the base `Experiment` retries throttling, records any other failure as an
     error reason (which the report classifies as errored), and skips caching the failed case.
     """
+    # Passed explicitly: custom strategies written against the old contract declare `max_turns` without a default.
     result = strategy.run_attack(case, session, max_turns=MAX_ALLOWED_TURNS, model=model)
     return {
         "output": result.conversation,
@@ -172,47 +166,3 @@ def _resolve_target_source(
         f"state); got agent={type(agent).__name__!r}, agent_factory=None. Pass a zero-arg factory "
         "that returns a fresh target for each case."
     )
-
-
-def _build_session(
-    agent: Agent | MultiAgentBase | TargetSession,
-    *,
-    baseline: Any = None,
-) -> TargetSession:
-    """Wrap an `Agent` / `MultiAgentBase`, or pass a `TargetSession` through.
-
-    Args:
-        agent: The target to wrap, or a ready `TargetSession`.
-        baseline: Clean snapshot the wrapped session resets to between cases. Ignored for a passed-in
-            `TargetSession`. Typed `Any` because the two session types use different opaque baseline shapes.
-
-    Raises:
-        TypeError: If `agent` is not an `Agent`, `MultiAgentBase`, or a structural `TargetSession` (must expose
-            `invoke`/`reset`/`snapshot`/`restore` and a `trace: list`).
-    """
-    if isinstance(agent, Agent):
-        return StrandsAgentSession(agent, baseline=baseline)
-    if isinstance(agent, MultiAgentBase):
-        return StrandsMultiAgentSession(agent, baseline=baseline)
-    # Structural check: TargetSession is a Protocol. The `trace: list` check is
-    # load-bearing because the task runner dereferences `.trace` directly.
-    has_methods = all(callable(getattr(agent, method, None)) for method in ("invoke", "reset", "snapshot", "restore"))
-    if has_methods and isinstance(getattr(agent, "trace", None), list):
-        return agent
-    raise TypeError(
-        f"agent must be a strands.Agent, strands.multiagent.MultiAgentBase, or a TargetSession, "
-        f"got {type(agent).__name__!r}; wrap a custom target in a TargetSession so the strategy "
-        "can snapshot/restore its state."
-    )
-
-
-def _resolve_case_strategy(case: RedTeamCase, by_label: dict[str, AttackStrategy]) -> AttackStrategy:
-    """Look up the strategy for `case` from its `metadata["strategy"]` label."""
-    metadata = case.metadata or {}
-    label = metadata.get("strategy")
-    if label is None:
-        raise ValueError(f"RedTeamCase {case.name!r}: metadata is missing the 'strategy' label.")
-    strategy = by_label.get(label)
-    if strategy is None:
-        raise ValueError(f"RedTeamCase {case.name!r}: no strategy registered for label {label!r}.")
-    return strategy
