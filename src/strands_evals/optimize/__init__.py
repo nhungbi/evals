@@ -56,6 +56,7 @@ from .optimizer import (
 from .rewards import RewardFunction, RewardFunctionEvaluator
 from .runs import RunDirectory
 from .search import Alternate, Block, Joint, Nested, Schedule, Search
+from .selection import CaseFrontier, Greedy, Selection, SelectionContext, SelectionStep
 from .space import ParamInfo, Space
 
 __all__ = [
@@ -69,6 +70,7 @@ __all__ = [
     "Budget",
     "Candidate",
     "CandidateScore",
+    "CaseFrontier",
     "Chebyshev",
     "Choice",
     "Combine",
@@ -83,6 +85,7 @@ __all__ = [
     "Formula",
     "FormulaArtifact",
     "Gate",
+    "Greedy",
     "Int",
     "IterationRecord",
     "Joint",
@@ -109,6 +112,9 @@ __all__ = [
     "RunDirectory",
     "Schedule",
     "Search",
+    "Selection",
+    "SelectionContext",
+    "SelectionStep",
     "SkillCuration",
     "SkillLibrary",
     "Space",

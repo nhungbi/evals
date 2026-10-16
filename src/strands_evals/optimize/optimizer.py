@@ -1,15 +1,17 @@
 """The optimizer loop: exploration chooses the parent, the gate chooses the champion.
 
-Every admitted candidate stays in a pool. Each iteration, the case frontier (the pool members
-that are best on at least one selection case) supplies a parent: either two frontier members are
-merged variable by variable, or one is sampled, weighted by the cases it leads, and the
-schedule's block proposes typed changes to it. Each proposal is built fresh and scored with k
+Every admitted candidate stays in a pool. Each iteration, the optimizer's `Selection` supplies a
+parent. Under the default `Greedy`, the parent is always the champion; under `CaseFrontier`,
+either two frontier members (pool members that are best on at least one selection case) are
+merged variable by variable, or one is sampled, weighted by the cases it leads. The schedule's block
+then proposes typed changes to the parent. Each proposal is built fresh and scored with k
 repeated runs through the caller's own `Experiment` (usage metered per trial), and the scoring
 layer reduces per-case metrics to one objective scalar.
 
 Acceptance then has two steps. Admission (loose, on the selection split): a proposal joins the
-pool when it breaks no constraint and would land on the case frontier. The champion gate (strict,
-on the holdout): the one admitted proposal with the best selection mean, if that mean beats the
+pool when it breaks no constraint, covers its parent's selection cases, and the selection admits
+it (`CaseFrontier` requires landing on the case frontier). The champion gate (strict, on the
+holdout): the one admitted proposal with the best selection mean, if that mean beats the
 champion's, must meet every constraint on the holdout and clear the paired bootstrap test. Every
 outcome is fed back to the proposing method as its selection-split scalar; only the gate reads
 the holdout.
@@ -34,13 +36,13 @@ from .artifacts import Artifact, ArtifactSpace
 from .candidate import Candidate
 from .execution import TrialLedger, default_rollout, instrumented
 from .factory import TunableFactory
-from .frontier import pareto_front, sample_parent
+from .frontier import pareto_front
 from .gate import AcceptanceVerdict, Budget, Gate, paired_bootstrap_compare
-from .merge import MergePlan, find_merge_pair
 from .methods import Observation, Patch, build_reflection_records
 from .objectives import Combine, Constraint, Objective, Projection
 from .runs import RunDirectory
 from .search import Block, Search, default_search
+from .selection import CaseFrontier, Greedy, Selection, SelectionContext, SelectionStep
 from .space import Space
 from .trajectories import render_trajectory
 
@@ -51,11 +53,6 @@ _ERROR_REASON_PREFIXES = ("An error occurred:", "Evaluator error:")
 # Below this many held-out cases, judge noise buys too many false accepts (measured at 8-10%
 # false positives with 5 cases in the gate calibration experiments).
 _MIN_HOLDOUT_FOR_QUIET_GATE = 5
-
-# Selection has no configuration in v1. A case is led only by exact ties for its best value, and
-# a run takes at most this many merge steps (each pair of frontier members is merged once).
-_FRONTIER_EPS = 0.0
-_MAX_MERGES = 5
 
 ProposalStatus = Literal["proposed", "unscored", "scored", "infeasible", "dominated", "admitted", "accepted"]
 
@@ -338,7 +335,11 @@ class Optimizer:
             accept anything.
         search: `Search(blocks=..., schedule=...)`. When omitted, one default block per variable
             type (text to `Reflection`, numbers and choices to `TPE`) under an `Alternate`
-            schedule. The blocks always propose on the parent the case frontier supplies.
+            schedule. The blocks always propose on the parent `selection` supplies.
+        selection: How each iteration picks its parent and which proposals join the pool.
+            Defaults to `Greedy()` (always build on the champion). `CaseFrontier()` samples
+            parents from the case frontier and merges specialists. A resumed run must use the
+            selection it was recorded with.
         gate: Acceptance configuration. Always on; see `Gate`.
         budget: Rollout and iteration caps. A conservative default cap applies when unset.
         proposals_per_iteration: How many candidates each proposing block is asked for.
@@ -364,6 +365,7 @@ class Optimizer:
         objectives: Objective | Combine | None = None,
         constraints: tuple[Constraint, ...] | list[Constraint] = (),
         search: Search | None = None,
+        selection: Selection | None = None,
         gate: Gate | None = None,
         budget: Budget | None = None,
         proposals_per_iteration: int = 3,
@@ -405,6 +407,9 @@ class Optimizer:
         evaluator_names = [_evaluator_name(evaluator) for evaluator in experiment.evaluators]
         self.projection = Projection(objectives, constraints, evaluator_names=evaluator_names)
         self.search = search or default_search(self.space)
+        if selection is not None and not isinstance(selection, Selection):
+            raise TypeError(f"selection takes a Selection such as Greedy() or CaseFrontier(), not {selection!r}")
+        self.selection = selection or Greedy()
         self._blocks: list[tuple[Block, list[str]]] = self.search.resolved(self.space)
         if not self._blocks:
             raise ValueError("the search has no blocks: nothing can be proposed")
@@ -442,6 +447,7 @@ class Optimizer:
                     "objectives": self.projection.metric_names() if objectives is not None else "evaluator-mean",
                     "constraints": [constraint.describe() for constraint in self.projection.constraints],
                     "blocks": {block.name: keys for block, keys in self._blocks},
+                    "selection": self.selection.name,
                 },
             )
         if len(self.holdout_names) < _MIN_HOLDOUT_FOR_QUIET_GATE:
@@ -515,14 +521,16 @@ class Optimizer:
                 break
             spent_before = self._rollouts_spent
 
-            # Selection: merge two complementary frontier members when an untried pair exists and
-            # the run has merges left; otherwise sample one member, weighted by the cases it leads.
-            front = self._frontier(pool)
-            plan = self._merge_plan(front, pool, merge_count)
-            if plan is not None:
-                parent = pool[plan.first]
-            else:
-                parent = pool[sample_parent(front, self._parent_rng(iteration))] if front else champion
+            # Selection: the optimizer's `Selection` picks the parent, and may plan a merge instead of
+            # a proposal. The frontier below is reporting only (`select` events, `result.frontier`).
+            selection = self.selection
+            choice = selection.choose(self._selection_context(pool, champion.id, iteration, merge_count))
+            _check_choice(selection, choice, pool)
+            self._merged_pairs.update(choice.unmergeable)
+            plan = choice.merge
+            parent = pool[choice.parent_id]
+            front = self._reported_frontier(pool)
+            if plan is None:
                 if not await self._ensure_fully_scored(parent):
                     logger.info("candidate=<%s> | budget cannot cover the parent's training cases, stopping", parent.id)
                     break
@@ -587,8 +595,9 @@ class Optimizer:
             outcomes, candidates_by_id = self._register(drafts, pool, iteration)
             await self._score_proposals(outcomes, candidates_by_id)
 
-            # Admission (loose): a feasible proposal joins the pool when it lands on the case
-            # frontier. The best selection means go first, so they win exact ties within the batch.
+            # Admission (loose): a feasible proposal that covers its parent's selection cases joins
+            # the pool when the selection admits it. The best selection means go first, so they win
+            # exact ties within the batch.
             scored = [o for o in outcomes if o.status == "scored"]
             scored.sort(key=lambda o: o.selection_score or 0.0, reverse=True)
             admitted: list[ProposalOutcome] = []
@@ -604,7 +613,15 @@ class Optimizer:
                         "infeasible", candidate_id=outcome.candidate_id, iteration=iteration, violations=violations
                     )
                     continue
-                cases_led = self._admission_cases(outcome.candidate_id, parent_score, pool)
+                cases_led = (
+                    selection.admits(
+                        outcome.candidate_id,
+                        score.subset(self.selection_names),
+                        self._selection_context(pool, champion.id, iteration, merge_count),
+                    )
+                    if self._covers_parent(outcome.candidate_id, parent_score)
+                    else None
+                )
                 if cases_led is None:
                     outcome.status = "dominated"
                     dominated_count += 1
@@ -718,76 +735,55 @@ class Optimizer:
             dominated_count=dominated_count,
             infeasible_count=infeasible_count,
             merge_count=merge_count,
-            frontier={candidate_id: sorted(cases) for candidate_id, cases in self._frontier(pool).items()},
+            frontier={candidate_id: sorted(cases) for candidate_id, cases in self._reported_frontier(pool).items()},
         )
 
     # -- selection -----------------------------------------------------------------------
 
-    def _frontier(self, pool: Mapping[str, Candidate]) -> dict[str, frozenset[str]]:
-        """The pool's case frontier on the selection split, in pool order."""
+    def _selection_context(
+        self, pool: Mapping[str, Candidate], champion_id: str, iteration: int, merges_done: int
+    ) -> SelectionContext:
+        """What the selection may read: the pool on the selection split, lineage, and merge state."""
+        return SelectionContext(
+            scores={candidate_id: self._scores[candidate_id].subset(self.selection_names) for candidate_id in pool},
+            values={candidate_id: candidate.values for candidate_id, candidate in pool.items()},
+            parents=self._parents,
+            selection_cases=self.selection_names,
+            champion_id=champion_id,
+            rng=self._parent_rng(iteration),
+            merged_pairs=frozenset(self._merged_pairs),
+            merges_done=merges_done,
+            validate=self.space.validate,
+            group_of=self.space.entry_name,
+        )
+
+    def _reported_frontier(self, pool: Mapping[str, Candidate]) -> dict[str, frozenset[str]]:
+        """The pool's case frontier on the selection split, for the record, whatever the selection.
+
+        Logged on `select` events and returned as `result.frontier`, so a run under `Greedy`
+        still shows the specialists it never built on. No decision reads it.
+        """
         return pareto_front(
             {candidate_id: self._scores[candidate_id].subset(self.selection_names) for candidate_id in pool},
             self.selection_names,
-            _FRONTIER_EPS,
+            CaseFrontier.EPS,
         )
-
-    def _merge_plan(
-        self, front: Mapping[str, frozenset[str]], pool: Mapping[str, Candidate], merges_done: int
-    ) -> MergePlan | None:
-        """The next merge to run, or `None` when merging is off, used up, or no pair qualifies.
-
-        A planned merge whose values the space rejects is marked tried and skipped, so the run
-        never retries an impossible combination.
-        """
-        if merges_done >= _MAX_MERGES or len(front) < 2:
-            return None
-        while True:
-            plan = find_merge_pair(
-                front,
-                {candidate_id: candidate.values for candidate_id, candidate in pool.items()},
-                self._parents,
-                self._merged_pairs,
-                group_of=self.space.entry_name,
-            )
-            if plan is None:
-                return None
-            try:
-                self.space.validate(plan.values)
-                return plan
-            except ValueError as error:
-                logger.warning(
-                    "first=<%s>, second=<%s>, error=<%s> | merged values rejected by the space",
-                    plan.first,
-                    plan.second,
-                    error,
-                )
-                self._merged_pairs.add(frozenset((plan.first, plan.second)))
 
     def _parent_rng(self, iteration: int) -> random.Random:
         # Seeded per iteration (a string seed hashes deterministically), so a resumed run samples
         # the same parent an uninterrupted run would have at that iteration.
         return random.Random(f"{self.seed}:{iteration}")
 
-    def _admission_cases(
-        self, candidate_id: str, parent_score: CandidateScore, pool: Mapping[str, Candidate]
-    ) -> list[str] | None:
-        """The selection cases a candidate would lead if admitted, or `None` when it is dominated.
+    def _covers_parent(self, candidate_id: str, parent_score: CandidateScore) -> bool:
+        """Whether a candidate kept scores on enough of its parent's selection cases.
 
-        The candidate is placed after every pool member, so an exact tie on every case it leads
-        goes to the existing member and a no-op edit is never admitted. A candidate that lost
-        coverage against its parent (crashed on its selection cases) is dominated outright.
+        A candidate that lost coverage against its parent (crashed on its selection cases) is
+        dominated outright, whatever the selection.
         """
         candidate_cases = self._scores[candidate_id].subset(self.selection_names)
         parent_cases = parent_score.subset(self.selection_names)
         covered = len(set(candidate_cases) & set(parent_cases))
-        if parent_cases and covered < self.gate.min_coverage * len(parent_cases):
-            return None
-        trial = {member_id: self._scores[member_id].subset(self.selection_names) for member_id in pool}
-        trial[candidate_id] = candidate_cases
-        front = pareto_front(trial, self.selection_names, _FRONTIER_EPS)
-        if candidate_id not in front:
-            return None
-        return sorted(front[candidate_id])
+        return not parent_cases or covered >= self.gate.min_coverage * len(parent_cases)
 
     async def _ensure_fully_scored(self, candidate: Candidate) -> bool:
         """Top a candidate up to the full case set, returning False when the budget cannot.
@@ -1158,6 +1154,13 @@ class Optimizer:
                 f"new cases {sorted(current_cases - recorded_cases)}. "
                 f"Changed cases need a fresh run (the case split would be stale)."
             )
+        # Runs recorded before selection was switchable used the case frontier.
+        recorded_selection = config.get("selection", "frontier")
+        if recorded_selection != self.selection.name:
+            raise ValueError(
+                f"resumed selection does not match the recorded run: recorded {recorded_selection!r}, "
+                f"supplied {self.selection.name!r}. A pool built under one selection is not valid under another."
+            )
         recorded_space = set(config.get("space", {}))
         current_space = {info.key for info in self.space.params()}
         if recorded_space != current_space:
@@ -1212,6 +1215,16 @@ class Optimizer:
             )
             selection = list(train)
         return train, selection, holdout
+
+
+def _check_choice(selection: Selection, choice: SelectionStep, pool: Mapping[str, Candidate]) -> None:
+    """Fail clearly when a selection names a candidate the loop cannot build on."""
+    named = [choice.parent_id]
+    if choice.merge is not None:
+        named += [choice.merge.first, choice.merge.second, choice.merge.ancestor]
+    outside = [candidate_id for candidate_id in named if candidate_id not in pool]
+    if outside:
+        raise ValueError(f"{type(selection).__name__}.choose named {outside}, which are not pool members")
 
 
 def _evaluator_name(evaluator: Any) -> str:

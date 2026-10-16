@@ -135,6 +135,7 @@ strands-evals/
 │   │   ├── objectives.py                     # Maximize/Minimize, WeightedSum, AtMost/AtLeast, Projection
 │   │   ├── methods.py                        # Reflection / ContrastiveReflection / TPE methods + guardrails
 │   │   ├── search.py                         # Block, Schedule (Alternate, Joint), Search, default_search
+│   │   ├── selection.py                      # Selection strategies (Greedy default, CaseFrontier): parent choice + admission
 │   │   ├── frontier.py                       # Case frontier: case leaders, dominance, parent sampling
 │   │   ├── merge.py                          # Variable-wise merge of two frontier members (GEPA crossover)
 │   │   ├── trajectories.py                   # Renders a returned trajectory (Session or messages) for reflection

@@ -16,7 +16,9 @@ from strands_evals.optimize import (
     AtMost,
     Block,
     Budget,
+    CaseFrontier,
     Gate,
+    Greedy,
     Method,
     Optimizer,
     Patch,
@@ -76,13 +78,14 @@ class ScriptedMethod(Method):
         self.observations.append(observation)
 
 
-def make_optimizer(tmp_path, batches, *, run_dir=None, max_iterations=2, constraints=(), gate=None):
+def make_optimizer(tmp_path, batches, *, run_dir=None, max_iterations=2, constraints=(), gate=None, selection=None):
     method = ScriptedMethod(batches)
     optimizer = Optimizer(
         Experiment(cases=make_cases(), evaluators=[Equals()]),
         build_task=build_task,
         artifacts=ArtifactSpace(a=TextArtifact("base a"), b=TextArtifact("base b")),
         search=Search(blocks=[Block(method, "a", "b")]),
+        selection=selection or CaseFrontier(),  # these tests exercise the frontier and merge
         constraints=list(constraints),
         gate=gate or Gate(runs_per_candidate=1, holdout_fraction=0.4),
         budget=Budget(max_rollouts=1_000, max_iterations=max_iterations),
@@ -143,6 +146,18 @@ async def test_specialists_join_the_frontier_and_their_merge_becomes_champion(tm
     assert list(result.frontier) == [result.best.id]
     # The merge step calls no method: the method proposed once, on the baseline.
     assert method.parents == [result.baseline.id]
+
+
+async def test_greedy_proposes_on_the_champion_instead_of_merging_specialists(tmp_path):
+    optimizer, method = make_optimizer(tmp_path, SPECIALISTS + [[{"b": FIX_B}]], selection=Greedy())
+
+    result = await optimizer.run()
+
+    first, second = result.iterations
+    assert [p.status for p in first.proposals] == ["accepted", "admitted"]
+    assert second.step == "propose" and result.merge_count == 0
+    assert method.parents == [result.baseline.id, first.accepted_candidate_id]
+    assert result.best.values == {"a": FIX_A, "b": FIX_B}  # same answer, reached by editing the champion
 
 
 async def test_methods_are_told_the_selection_scalar_never_the_holdout(tmp_path, monkeypatch):

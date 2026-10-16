@@ -1,7 +1,7 @@
 """The search layer: which block of variables moves next, proposed by which method.
 
 A `Block` groups variables under one `Method`. A `Schedule` says which blocks move in each
-iteration while the rest hold at the incumbent's values. When no search is given, every variable
+iteration while the rest hold at the parent's values. When no search is given, every variable
 lands in a default block for its type (text to `Reflection`, numbers and choices to `TPE`) and
 the schedule is `Alternate`, one block per iteration, so the gate's attribution of an accepted
 edit stays clean. Most users never touch this layer.
