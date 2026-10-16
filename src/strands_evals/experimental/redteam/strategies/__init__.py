@@ -1,5 +1,5 @@
 from .bad_likert_judge import BadLikertJudgeStrategy
-from .base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
+from .base import MAX_ALLOWED_TURNS, RUN_RESULTS, AttackRunResult, AttackStrategy
 from .crescendo import CrescendoStrategy
 from .goat import GoatStrategy
 from .pair import PairStrategy
@@ -26,6 +26,7 @@ BUILTIN_STRATEGIES: dict[str, AttackStrategy] = {
 __all__ = [
     "BUILTIN_STRATEGIES",
     "MAX_ALLOWED_TURNS",
+    "RUN_RESULTS",
     "AttackRunResult",
     "AttackStrategy",
     "BadLikertJudgeStrategy",
