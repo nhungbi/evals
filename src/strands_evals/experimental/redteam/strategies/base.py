@@ -8,9 +8,18 @@ from typing import TYPE_CHECKING, Any
 
 from strands.models.model import Model
 
+from ....types import EnvironmentState
+
 if TYPE_CHECKING:
     from ..case import RedTeamCase
     from .target_session import TargetSession
+
+# Default `max_turns` for `run_attack`, and the hard ceiling the built-in task always passes. A strategy's own
+# ctor `max_turns` is its per-attack budget and wins when smaller.
+MAX_ALLOWED_TURNS = 50
+
+# Name of the task-output `environment_state` entry `RedTeamReport` reads run stats from.
+RUN_RESULTS = "redteam_run_results"
 
 
 @dataclass
@@ -34,6 +43,13 @@ class AttackRunResult:
     strategy_score: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     pruned_branches: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_environment_state(self) -> EnvironmentState:
+        """Return the `RUN_RESULTS` entry a task puts in its `environment_state` for `RedTeamReport` to read.
+
+        The state holds the strategy's `metadata` plus `pruned_branches`.
+        """
+        return EnvironmentState(name=RUN_RESULTS, state={**self.metadata, "pruned_branches": self.pruned_branches})
 
 
 class AttackStrategy(ABC):
@@ -69,7 +85,7 @@ class AttackStrategy(ABC):
         case: RedTeamCase,
         target_session: TargetSession,
         *,
-        max_turns: int,
+        max_turns: int = MAX_ALLOWED_TURNS,
         model: Model | str | None = None,
         **kwargs: Any,
     ) -> AttackRunResult:
@@ -86,7 +102,8 @@ class AttackStrategy(ABC):
             case: The red team case carrying the attack goal.
             target_session: Session for invoking the target, snapshotting/restoring its state, and reading
                 its tool-use `trace`.
-            max_turns: Experiment-level ceiling. A strategy with its own `max_turns` should run
+            max_turns: Experiment-level ceiling; defaults to `MAX_ALLOWED_TURNS`. Overrides should keep that
+                default so custom tasks can omit it. A strategy with its own `max_turns` should run
                 `min(self._max_turns, max_turns)`.
             model: Model for any strategy-internal LLM calls; ctor model takes precedence.
             **kwargs: Reserved for forward compatibility.
