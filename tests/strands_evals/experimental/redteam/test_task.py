@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies.base import AttackRunResult, AttackStrategy
+from strands_evals.experimental.redteam.strategies.base import RUN_RESULTS, AttackRunResult, AttackStrategy
 from strands_evals.experimental.redteam.task import (
     MAX_ALLOWED_TURNS,
     _build_attacker_task,
@@ -42,17 +42,17 @@ class _StubStrategy(AttackStrategy):
         self.reset_count += 1
 
 
-def _case(name: str = "c0", label: str = "stub") -> RedTeamCase:
-    return RedTeamCase(
+def _case(name: str = "c0", strategy: AttackStrategy | None = None) -> RedTeamCase:
+    """An expanded case, as `RedTeamExperiment` builds it: tagged with its strategy and that strategy's label."""
+    strategy = strategy or _StubStrategy()
+    case = RedTeamCase(
         name=name,
         input="hello",
         config=RedTeamConfig(attack_goal=AttackGoal(risk_category="prompt_injection", actor_goal="goal")),
-        metadata={"strategy": label},
+        metadata={"strategy": strategy.label},
     )
-
-
-def _by_label(*strategies: AttackStrategy) -> dict[str, AttackStrategy]:
-    return {s.label: s for s in strategies}
+    case.strategy = strategy
+    return case
 
 
 class _FakeSession:
@@ -80,31 +80,43 @@ def test_run_attack_receives_max_allowed_turns_ceiling():
     from strands_evals.experimental.redteam.task import MAX_ALLOWED_TURNS
 
     strat = _StubStrategy()
-    _build_attacker_task(_FakeSession(lambda _msg: "ok"), _by_label(strat))(_case())
+    _build_attacker_task(_FakeSession(lambda _msg: "ok"))(_case(strategy=strat))
     assert strat.received_max_turns == MAX_ALLOWED_TURNS
 
 
 def test_task_fn_calls_run_attack_and_maps_result():
     strat = _StubStrategy()
-    task = _build_attacker_task(_FakeSession(lambda _msg: "target reply"), _by_label(strat))
+    task = _build_attacker_task(_FakeSession(lambda _msg: "target reply"))
 
-    result = task(_case())
+    result = task(_case(strategy=strat))
 
-    # Only the keys the base Experiment reads are returned; run stats flow via run_meta.
-    assert set(result) == {"output", "trajectory"}
+    # Only the keys the base Experiment reads are returned; run stats flow via environment_state.
+    assert set(result) == {"output", "trajectory", "environment_state"}
     assert result["output"][1]["content"] == "target reply"
     assert strat.reset_count == 1
 
 
-def test_task_fn_records_run_stats_into_run_meta():
-    """Strategy metadata reaches the experiment via run_meta, not the returned dict."""
-    strat = _StubStrategy()
-    run_meta: dict[str, dict] = {}
-    task = _build_attacker_task(_FakeSession(lambda _msg: "target reply"), _by_label(strat), run_meta=run_meta)
+@pytest.mark.parametrize("parallel", [False, True])
+def test_task_fn_returns_run_results_in_environment_state(parallel):
+    """Both task paths return the strategy's run stats as the `RUN_RESULTS` environment state."""
+    pruned = [{"role": "attacker", "content": "a"}, {"role": "target", "content": "no"}]
+    strat = _StubStrategy(
+        result=AttackRunResult(
+            conversation=[],
+            strategy_succeeded=True,
+            metadata={"turns_used": 3, "backtracks": 1, "target_calls": 4},
+            pruned_branches=pruned,
+        )
+    )
+    if parallel:
+        task = _build_attacker_task(None, agent_factory=lambda: _FakeSession(lambda _msg: "ok"), parallel=True)
+    else:
+        task = _build_attacker_task(_FakeSession(lambda _msg: "ok"))
 
-    task(_case("c0"))
+    (state,) = task(_case(strategy=strat))["environment_state"]
 
-    assert run_meta["c0"]["turns_used"] == 1
+    assert state.name == RUN_RESULTS
+    assert state.state == {"turns_used": 3, "backtracks": 1, "target_calls": 4, "pruned_branches": pruned}
 
 
 class _RaisingStrategy(_StubStrategy):
@@ -121,35 +133,31 @@ class _RaisingStrategy(_StubStrategy):
 def test_task_fn_propagates_attack_error():
     """A crash must propagate: the base Experiment records it as an error reason and skips caching it,
     so a replay against the same evaluation_data_store re-runs the case instead of reading it as defended."""
-    run_meta: dict[str, dict] = {}
     strat = _RaisingStrategy(RuntimeError("target blew up"))
-    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"), _by_label(strat), run_meta=run_meta)
+    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"))
 
     with pytest.raises(RuntimeError, match="target blew up"):
-        task(_case("c0"))
-    assert "c0" not in run_meta
+        task(_case("c0", strategy=strat))
 
 
 def test_task_fn_resets_strategy_each_case():
     strat = _StubStrategy()
-    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"), _by_label(strat))
-    task(_case("c0"))
-    task(_case("c1"))
+    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"))
+    task(_case("c0", strategy=strat))
+    task(_case("c1", strategy=strat))
     assert strat.reset_count == 2
 
 
-def test_task_fn_missing_strategy_label_raises():
-    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"), _by_label(_StubStrategy()))
-    case = _case()
-    case.metadata = {}  # no strategy label
-    with pytest.raises(ValueError, match="strategy"):
+def test_task_fn_missing_strategy_raises():
+    """A case with no strategy attached (not expanded by RedTeamExperiment) gets a clear error."""
+    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"))
+    case = RedTeamCase(
+        name="c0",
+        input="hello",
+        config=RedTeamConfig(attack_goal=AttackGoal(risk_category="prompt_injection", actor_goal="goal")),
+    )
+    with pytest.raises(AttributeError, match="'c0' has no strategy"):
         task(case)
-
-
-def test_task_fn_unknown_strategy_label_raises():
-    task = _build_attacker_task(_FakeSession(lambda _msg: "ok"), _by_label(_StubStrategy(label="stub")))
-    with pytest.raises(ValueError, match="missing"):
-        task(_case(label="missing"))
 
 
 def test_task_fn_session_trace_becomes_trajectory():
@@ -160,7 +168,7 @@ def test_task_fn_session_trace_becomes_trajectory():
         return "reply"
 
     session = _FakeSession(reply)
-    task = _build_attacker_task(session, _by_label(_StubStrategy()))
+    task = _build_attacker_task(session)
     result = task(_case())
 
     assert result["trajectory"] == [{"name": "lookup", "input": {"id": "1"}}]
@@ -176,7 +184,7 @@ def test_task_fn_trajectory_is_a_copy_not_the_live_trace():
         return "reply"
 
     session = _FakeSession(reply)
-    task = _build_attacker_task(session, _by_label(_StubStrategy()))
+    task = _build_attacker_task(session)
 
     result0 = task(_case("c0"))
     assert result0["trajectory"] == [{"name": "lookup", "input": {}}]
@@ -189,7 +197,7 @@ def test_task_fn_trajectory_is_a_copy_not_the_live_trace():
 
 def test_task_fn_bare_callable_target_raises_type_error():
     """A bare callable can't snapshot/restore, so it is rejected up front."""
-    task = _build_attacker_task(lambda _msg: "reply", _by_label(_StubStrategy()))
+    task = _build_attacker_task(lambda _msg: "reply")
     with pytest.raises(TypeError, match="TargetSession"):
         task(_case())
 
@@ -212,7 +220,7 @@ def test_task_fn_session_missing_trace_raises_type_error():
         def restore(self, _c):
             pass
 
-    task = _build_attacker_task(_NoTrace(), _by_label(_StubStrategy()))
+    task = _build_attacker_task(_NoTrace())
     with pytest.raises(TypeError, match="TargetSession"):
         task(_case())
 
@@ -229,7 +237,7 @@ def test_task_fn_resets_agent_to_clean_baseline_per_case():
     agent.messages.__len__.return_value = 0
     agent.return_value = "ok"
     baseline = agent.take_snapshot.return_value
-    task = _build_attacker_task(agent, _by_label(_StubStrategy()))
+    task = _build_attacker_task(agent)
 
     # baseline captured exactly once, before any case
     assert agent.take_snapshot.call_count == 1
@@ -257,7 +265,6 @@ def test_parallel_task_fn_calls_factory_per_case():
 
     task = _build_attacker_task(
         agent=None,
-        by_label=_by_label(_StubStrategy()),
         agent_factory=factory,
         parallel=True,
     )
@@ -281,7 +288,6 @@ def test_parallel_task_fn_requires_agent_factory():
     with pytest.raises(TypeError, match="agent_factory"):
         _build_attacker_task(
             agent=real_agent,
-            by_label=_by_label(_StubStrategy()),
             parallel=True,
         )
 
@@ -289,7 +295,6 @@ def test_parallel_task_fn_requires_agent_factory():
     with pytest.raises(TypeError, match="agent_factory"):
         _build_attacker_task(
             agent=sess,
-            by_label=_by_label(_StubStrategy()),
             parallel=True,
         )
 
@@ -312,7 +317,6 @@ def test_factory_path_skips_baseline_snapshot():
 
     _build_attacker_task(
         agent=agent,
-        by_label=_by_label(_StubStrategy()),
         agent_factory=factory,
     )
     # the factory path neither captures a baseline nor mutates the seed agent.
@@ -358,10 +362,10 @@ def test_task_fn_routes_multi_agent_base_to_multi_agent_session():
             captured["session"] = target_session
             return AttackRunResult(conversation=[], metadata={"turns_used": 0})
 
-    task = _build_attacker_task(root, _by_label(_CapturingStrategy()))
+    task = _build_attacker_task(root)
     # baseline serialize_state captured once before any case runs
     assert root.serialize_calls == 1
-    task(_case("c0"))
+    task(_case("c0", strategy=_CapturingStrategy()))
     # routed to the multi-agent session
     assert isinstance(captured["session"], StrandsMultiAgentSession)
     # baseline composite has the expected shape

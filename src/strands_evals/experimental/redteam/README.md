@@ -48,33 +48,32 @@ cases = AdversarialCaseGenerator().generate_cases(
 # Run the case x strategy cross-product in parallel (defaults to max_workers=5).
 experiment = RedTeamExperiment(
     cases=cases,
-    agent_factory=agent_factory,
     attack_strategies=[CrescendoStrategy(), GoatStrategy()],
 )
-report = asyncio.run(experiment.run_evaluations_async())  # or `await ...` from an async caller
+report = asyncio.run(experiment.run_evaluations_async(agent_factory=agent_factory))  # or `await ...`
 report.display()
 ```
 
 `run_evaluations_async()` runs each strategy against each case and returns a `RedTeamReport`. It defaults to `max_workers=5` — a conservative cap that fits most provider tiers without user-side rate-limit tuning. Raise it for fast targets / generous TPM budgets, or drop to `1` for deterministic ordering and single-case debugging.
 
+The experiment holds no live target: `agent_factory` is passed to the run method, which calls it once per case. Pass your own `task=` instead when you need to build the target yourself.
+
 ### Sequential / sync convenience
 
-For a quick interactive run — a notebook smoke test, local debugging — pass `agent=` and use the sync entry point. The runner drives cases sequentially against one shared target, rewinding it to a clean baseline between cases via snapshot/restore:
+For a quick interactive run — a notebook smoke test, local debugging — use the sync entry point:
 
 ```python
-agent = Agent(system_prompt="You are a helpful customer-support assistant.")
-experiment = RedTeamExperiment(
-    cases=cases, agent=agent, attack_strategies=[CrescendoStrategy()]
-)
-report = experiment.run_evaluations()  # sync; equivalent to run_evaluations_async(max_workers=1)
+report = experiment.run_evaluations(agent_factory=agent_factory)  # equivalent to run_evaluations_async(max_workers=1)
 ```
 
-`agent=` is for sequential runs only — parallel runs reject it with a `TypeError` at config time, because Strands targets carry non-deepcopyable client state (the default `BedrockModel` holds an httplib pool with thread locks) and the runner cannot safely clone a shared agent across workers. For CI sweeps and parallel runs, use the `agent_factory` path above.
+> **Deprecated:** passing `agent=` or `agent_factory=` to the `RedTeamExperiment` constructor, or setting `exp.agent` / `exp.agent_factory`, still works for one minor version but emits a `DeprecationWarning`. The shared `agent=` target only ever worked sequentially (Strands targets carry non-deepcopyable client state, so parallel runs rejected it); pass `agent_factory=` to the run method instead. Plain `Case` inputs are deprecated too; use `RedTeamCase`.
 
 ## Attack strategies
 
-All strategies share the `run_attack(case, target_session, *, max_turns, model)`
-contract and talk to the target only through `target_session.invoke(...)`.
+All strategies share the `run_attack(case, target_session, *, max_turns=MAX_ALLOWED_TURNS, model=None)`
+contract and talk to the target only through `target_session.invoke(...)`. To call `run_attack` from your own
+task, wrap a freshly built target with `as_target_session(target)`: an `Agent` becomes a `StrandsAgentSession`, a
+`Graph` / `Swarm` becomes a `StrandsMultiAgentSession`, and a `TargetSession` is passed through.
 
 | Strategy | Mechanism | Attacker LLM? | Paper |
 |----------|-----------|---------------|-------|
@@ -84,7 +83,7 @@ contract and talk to the target only through `target_session.invoke(...)`.
 | `BadLikertJudgeStrategy` | Casts the target as a harmfulness-rating judge, elicits a top-score example | no | [Unit 42](https://unit42.paloaltonetworks.com/multi-turn-technique-jailbreaks-llms/) |
 | `SequentialBreakStrategy` | Hides the harmful request among benign siblings in one narrative scaffold | no | [arXiv:2411.06426](https://arxiv.org/abs/2411.06426) |
 
-Each strategy accepts a `max_turns=` kwarg (its own per-attack ceiling); the task runner additionally caps every strategy at a hard `MAX_ALLOWED_TURNS = 50` (`task.py`), so a strategy configured higher will be silently clamped. Pass `label="..."` to compare two instances of the same strategy in one experiment (e.g. `CrescendoStrategy(max_turns=5, label="cresc_short")`); duplicate labels raise at construction.
+Each strategy accepts a `max_turns=` kwarg (its own per-attack ceiling); the built-in task additionally caps every strategy at a hard `MAX_ALLOWED_TURNS = 50` (`strategies/base.py`, exported from `strands_evals.experimental.redteam`), so a strategy configured higher will be silently clamped. A custom task can omit `run_attack`'s `max_turns`, which defaults to that ceiling. A custom `AttackStrategy` subclass should declare the same default (`max_turns: int = MAX_ALLOWED_TURNS`); one that declares `max_turns: int` without it still works with `RedTeamExperiment`, which always passes the value, but a custom task must pass `max_turns=` explicitly. Pass `label="..."` to compare two instances of the same strategy in one experiment (e.g. `CrescendoStrategy(max_turns=5, label="cresc_short")`); duplicate labels raise at construction.
 
 `PromptStrategy` (a no-attacker-LLM, system-prompt-template strategy) and the `BUILTIN_STRATEGIES` registry are the extension points for adding new template-driven strategies without subclassing — see `strategies/prompt_strategy/`. The full set of exported symbols (experiment, cases, evaluator, target sessions) is the `__all__` of `strands_evals.experimental.redteam`.
 
@@ -160,8 +159,8 @@ cases = AdversarialCaseGenerator().generate_cases(
 
 ## Persistence (CI / save-and-replay)
 
-A `RedTeamExperiment` serializes its cases and strategies but **not** the live target —
-neither `agent` nor `agent_factory` is JSON-serializable, so the canonical CI flow is
+A `RedTeamExperiment` serializes its cases and strategies. The target isn't part of the
+experiment — `agent_factory` is passed at run time — so the canonical CI flow is
 generate-once, persist, replay against a freshly built target later:
 
 ```python
@@ -169,14 +168,12 @@ generate-once, persist, replay against a freshly built target later:
 exp = RedTeamExperiment(cases=cases, attack_strategies=[CrescendoStrategy(), GoatStrategy()])
 exp.to_file("redteam_suite.json")
 
-# Run phase: reload, attach a factory, run.
+# Run phase: reload and run with a factory; nothing to reattach.
 exp = RedTeamExperiment.from_file("redteam_suite.json")
-exp.agent_factory = agent_factory          # required before run_evaluations_async() -- raises otherwise
-report = asyncio.run(exp.run_evaluations_async())
+report = asyncio.run(exp.run_evaluations_async(agent_factory=agent_factory))
 ```
 
-(`exp.agent = ...` also works for sequential `run_evaluations()`; pick the path that matches
-how you intend to run.) If your suite uses a custom strategy class, pass it via
+If your suite uses a custom strategy class, pass it via
 `from_file(..., custom_strategies=[MyStrategy])` so the loader can re-instantiate it.
 
 ## Reading the report
@@ -233,7 +230,7 @@ redteam/
 ├── experiment.py          # RedTeamExperiment
 ├── case.py                # RedTeamCase
 ├── report.py              # RedTeamReport, AttackResult, GroupedSummary
-├── task.py                # wraps Agent / MultiAgentBase into a TargetSession per case
+├── task.py                # built-in task: runs each case's strategy against its TargetSession
 ├── types/                 # AttackGoal, RedTeamConfig, RISK_CATEGORIES
 ├── generators/            # AdversarialCaseGenerator
 ├── evaluators/            # AttackSuccessEvaluator + judge prompt templates

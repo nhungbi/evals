@@ -106,16 +106,17 @@ strands-evals/
 │   │       ├── README.md                     # Module quick-start + walkthrough
 │   │       ├── case.py                       # RedTeamCase + RedTeamConfig
 │   │       ├── experiment.py                 # RedTeamExperiment (case × strategy cross-product)
-│   │       ├── task.py                       # _build_attacker_task; MAX_ALLOWED_TURNS = 50 (hard cap)
+│   │       ├── task.py                       # _build_attacker_task
 │   │       ├── utils.py                      # _put_model_field (used by to_dict)
 │   │       ├── report.py                     # RedTeamReport / AttackResult / GroupedSummary
 │   │       ├── evaluators/                   # AttackSuccessEvaluator
 │   │       ├── generators/                   # AdversarialCaseGenerator + TargetSpec
 │   │       ├── strategies/                   # AttackStrategy base + per-strategy subpackages
-│   │       │   ├── base.py                   # AttackStrategy ABC + AttackRunResult
+│   │       │   ├── base.py                   # AttackStrategy ABC + AttackRunResult; MAX_ALLOWED_TURNS = 50 (hard cap)
 │   │       │   ├── _common.py                # Shared helpers
 │   │       │   ├── target_session.py         # TargetSession Protocol + StrandsAgentSession,
-│   │       │   │                             # StrandsMultiAgentSession, TargetCheckpoint, ToolUseEntry
+│   │       │   │                             # StrandsMultiAgentSession, TargetCheckpoint, ToolUseEntry,
+│   │       │   │                             # as_target_session
 │   │       │   ├── bad_likert_judge/         # BadLikertJudgeStrategy
 │   │       │   ├── crescendo/                # CrescendoStrategy + crescendo_v0 prompt
 │   │       │   ├── goat/                     # GoatStrategy + goat_v0 prompt
@@ -487,7 +488,7 @@ When reviewing a PR in this repo, scan for all of the following:
 4. **Session/trace schema**: if the PR changes fields on `Session`, `Trace`, or `SpanUnion`, every mapper in `mappers/` must still produce valid instances. Check each.
 5. **SDK usage**: if the PR calls into `strands.*`, verify the symbol exists in the current SDK public API and is not under an `_` module or an experimental surface. When the SDK source is available as a sibling checkout (`../sdk-python/` or similar), read the relevant SDK file and confirm the signature matches.
 6. **Chaos changes**: new `ChaosEffect` subclasses must declare a `hook` (`"pre"` or `"post"`) and a unique `effect_type` literal so the discriminated union round-trips through Pydantic. The `ChaosPlugin` reads the active case from `_current_chaos_case` (ContextVar); don't rewire it to read from instance state. `ChaosCase.expand` is the public entry point for case × effect-map cross-products.
-7. **Red-team changes**: new strategies subclass `AttackStrategy` and clear runtime state in `reset()` (instances are shared across cases). `AttackSuccessEvaluator` must return a continuous 0.0-1.0 score and the four-anchor severity (`refused | partial | substantial | full`). For parallel runs, `RedTeamExperiment` requires `agent_factory=`, not `agent=`. Stability: `experimental.redteam` APIs may change in a minor release. Breaking changes (renames, removed args, changed defaults) go through a deprecation cycle with a `DeprecationWarning` for at least one minor version.
+7. **Red-team changes**: new strategies subclass `AttackStrategy` and clear runtime state in `reset()` (instances are shared across cases). `AttackSuccessEvaluator` must return a continuous 0.0-1.0 score and the four-anchor severity (`refused | partial | substantial | full`). `RedTeamExperiment` takes `agent_factory=` in `run_evaluations()` / `run_evaluations_async()`, not the constructor; the constructor's `agent=` / `agent_factory=` and plain `Case` inputs are deprecated. It binds `report_cls = RedTeamReport` but still rebuilds the report with `RedTeamReport.from_evaluation_report` so `overall_score` excludes errored rows. Stability: `experimental.redteam` APIs may change in a minor release. Breaking changes (renames, removed args, changed defaults) go through a deprecation cycle with a `DeprecationWarning` for at least one minor version.
 8. **Dependencies**: no new litellm, no new Jinja2, no new `_internal/` directories.
 9. **Style & logging**: structured logging with `%s` interpolation, lowercase messages, no f-strings in logger calls.
 10. **Tests**: new code needs a mirrored test file in `tests/strands_evals/...`. Async code uses `pytest-asyncio` auto mode.
