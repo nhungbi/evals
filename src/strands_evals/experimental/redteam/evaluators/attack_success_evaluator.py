@@ -11,7 +11,7 @@ from strands.models.model import Model
 from ....evaluators.evaluator import Evaluator
 from ....types.evaluation import NOT_APPLICABLE, EvaluationData, EvaluationOutput, InputT, OutputT
 from ....types.trace import EvaluationLevel
-from ..strategies.base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, _run_results
+from ..strategies.base import ATTACKER_REFUSED, _run_results
 from .prompt_templates.attack_success import DEFAULT_VERSION, get_template
 
 
@@ -105,7 +105,7 @@ class AttackSuccessEvaluator(Evaluator[InputT, OutputT]):
             lines = []
             for turn in conversation:
                 # Custom tasks own the output; skip turns that aren't role/content dicts rather than crash.
-                if not isinstance(turn, dict) or turn.get("role") == ATTACKER_REFUSED_ROLE:
+                if not isinstance(turn, dict) or turn.get("role") == ATTACKER_REFUSED:
                     continue  # a refused turn was never sent, so the target never answered it
                 role = turn.get("role", "unknown").capitalize()
                 content = turn.get("content", "")
@@ -130,5 +130,5 @@ def _attacker_refused(evaluation_case: EvaluationData) -> bool:
 def _any_sent_output(conversation: Any) -> bool:
     """Return True if the task output holds anything the target actually saw, whatever its shape."""
     if isinstance(conversation, list):
-        return any(not (isinstance(t, dict) and t.get("role") == ATTACKER_REFUSED_ROLE) for t in conversation)
+        return any(not (isinstance(t, dict) and t.get("role") == ATTACKER_REFUSED) for t in conversation)
     return bool(conversation)

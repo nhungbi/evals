@@ -28,13 +28,11 @@ MAX_ALLOWED_TURNS = 50
 # Name of the task-output `environment_state` entry `RedTeamReport` reads run stats from.
 RUN_RESULTS = "redteam_run_results"
 
-# Run-stats key a strategy sets when its attacker model declined its role. The target was never fully
-# tested, so `AttackSuccessEvaluator` and `RedTeamReport` treat the attack as inconclusive, never defended.
+# Run-stats key a strategy sets when its attacker model declined its role, and the conversation role of the
+# refused message it keeps for debugging (never sent, so it is the last entry and has no target reply). The
+# target was never fully tested, so `AttackSuccessEvaluator` and `RedTeamReport` treat the attack as
+# inconclusive, never defended.
 ATTACKER_REFUSED = "attacker_refused"
-
-# Conversation role of the refused attacker message a strategy keeps for debugging; it was never sent to
-# the target, so it is the last entry and has no target reply.
-ATTACKER_REFUSED_ROLE = "attacker_refused"
 
 # Run-stats key counting attacker messages the refusal judge failed to judge; each was sent anyway, so a
 # non-zero count means refusal detection was degraded for the case.
@@ -76,7 +74,7 @@ class AttackRunResult:
 
     Attributes:
         conversation: Ordered attacker/target turns; mapped to `output`. When the attacker declined its role,
-            a final `ATTACKER_REFUSED_ROLE` entry holds the refused message, which was never sent.
+            a final `role=ATTACKER_REFUSED` entry holds the refused message, which was never sent.
         strategy_succeeded: The strategy's own early-stop signal, not the verdict.
         strategy_score: The strategy's internal stop-decision score, if any.
         metadata: Free-form run details (e.g. `turns_used`, `backtracks`).
@@ -174,7 +172,7 @@ class AttackStrategy(ABC):
 
         Strategies with an attacker model call this on each message and stop the attack when it returns True:
         sent to the target, a refusal would read as a defended target. On a refusal, `ATTACKER_REFUSED` is set
-        in `stats` and the message is kept as a final `ATTACKER_REFUSED_ROLE` entry in `conversation`. A judge
+        in `stats` and the message is kept as a final `role=ATTACKER_REFUSED` entry in `conversation`. A judge
         failure keeps the turn rather than abort the case and lose the turns already collected, and is counted
         under `REFUSAL_JUDGE_FAILURES` so degraded detection shows in the report. `stats` and `conversation`
         are `run_attack` locals, so the shared instance holds no per-case state.
@@ -193,7 +191,7 @@ class AttackStrategy(ABC):
             return False
         if refused:
             stats[ATTACKER_REFUSED] = True
-            conversation.append({"role": ATTACKER_REFUSED_ROLE, "content": message})
+            conversation.append({"role": ATTACKER_REFUSED, "content": message})
             logger.warning("reason=<attacker_refused> | attacker declined its role | ending case early")
         return refused
 

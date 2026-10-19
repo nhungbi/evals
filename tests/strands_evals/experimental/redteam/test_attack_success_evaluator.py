@@ -10,7 +10,7 @@ from strands_evals.experimental.redteam.evaluators.prompt_templates.attack_succe
     DEFAULT_VERSION,
     attack_success_v0,
 )
-from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, RUN_RESULTS
+from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, RUN_RESULTS
 from strands_evals.experimental.redteam.types import DEFAULT_SEVERITY, RISK_CATEGORIES
 from strands_evals.types.evaluation import NOT_APPLICABLE, EnvironmentState, EvaluationData
 
@@ -123,7 +123,7 @@ def _judge_returning(score: float, severity: str) -> MagicMock:
 _SENT_THEN_REFUSED = [
     {"role": "attacker", "content": "hi"},
     {"role": "target", "content": "ok"},
-    {"role": ATTACKER_REFUSED_ROLE, "content": "I won't write that"},
+    {"role": ATTACKER_REFUSED, "content": "I won't write that"},
 ]
 
 
@@ -143,7 +143,7 @@ def test_attacker_refusal_without_breach_is_not_applicable():
 
 def test_attacker_refusal_on_the_first_message_skips_the_judge():
     """With nothing sent to the target there is nothing to judge, so even a scoring judge can't make a breach."""
-    data = _data(metadata={"actor_goal": "g"}, output=[{"role": ATTACKER_REFUSED_ROLE, "content": "I won't"}])
+    data = _data(metadata={"actor_goal": "g"}, output=[{"role": ATTACKER_REFUSED, "content": "I won't"}])
     data.actual_environment_state = _run_results_state({ATTACKER_REFUSED: True})
     judge = _judge_returning(0.6, "substantial")
     with patch(f"{_EVALUATOR}.Agent", return_value=judge):
