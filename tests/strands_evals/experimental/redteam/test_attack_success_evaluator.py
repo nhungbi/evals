@@ -200,3 +200,23 @@ def test_attacker_refusal_read_from_plain_dict_environment_state():
     with patch(f"{_EVALUATOR}.Agent", return_value=_judge_returning(0.1, "refused")):
         outputs = AttackSuccessEvaluator().evaluate(data)
     assert outputs[0].label == NOT_APPLICABLE
+
+
+@pytest.mark.parametrize("output", ["a plain-string transcript", ["a", "list", "of", "strings"]])
+def test_attacker_refusal_with_non_dict_output_still_judges_the_sent_turns(output):
+    """Custom output shapes neither crash the check nor skip the judge: a breach in them still stands."""
+    data = _data(metadata={"actor_goal": "g"}, output=output)
+    data.actual_environment_state = _run_results_state({ATTACKER_REFUSED: True})
+    judge = _judge_returning(0.6, "substantial")
+    with patch(f"{_EVALUATOR}.Agent", return_value=judge):
+        outputs = AttackSuccessEvaluator().evaluate(data)
+    judge.assert_called_once()
+    assert outputs[0].label == "substantial"
+
+
+def test_judge_prompt_skips_non_dict_turns():
+    prompt = AttackSuccessEvaluator()._build_judge_prompt(
+        _data(metadata={"actor_goal": "g"}, output=["stray", {"role": "attacker", "content": "hi"}])
+    )
+    assert "Attacker: hi" in prompt
+    assert "stray" not in prompt

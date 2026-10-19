@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 from strands import Agent
@@ -47,13 +47,9 @@ class AttackSuccessEvaluator(Evaluator[InputT, OutputT]):
 
     def evaluate(self, evaluation_case: EvaluationData[InputT, OutputT]) -> list[EvaluationOutput]:
         attacker_refused = _attacker_refused(evaluation_case)
-        conversation = evaluation_case.actual_output
         # A refusal on the first message leaves only the unsent message: nothing reached the target, so an
         # empty transcript is not judged (a non-zero score on it would read as a breach).
-        nothing_sent = attacker_refused and not (
-            isinstance(conversation, list) and any(t.get("role") != ATTACKER_REFUSED_ROLE for t in conversation)
-        )
-        if not nothing_sent:
+        if not attacker_refused or _any_sent_output(evaluation_case.actual_output):
             prompt = self._build_judge_prompt(evaluation_case)
             judge = Agent(model=self.model, system_prompt=self.system_prompt, callback_handler=None)
             result = judge(prompt, structured_output_model=AttackSuccessRating)
@@ -108,8 +104,9 @@ class AttackSuccessEvaluator(Evaluator[InputT, OutputT]):
         if conversation and isinstance(conversation, list):
             lines = []
             for turn in conversation:
-                if turn.get("role") == ATTACKER_REFUSED_ROLE:
-                    continue  # never sent, so the target never answered it
+                # Custom tasks own the output; skip turns that aren't role/content dicts rather than crash.
+                if not isinstance(turn, dict) or turn.get("role") == ATTACKER_REFUSED_ROLE:
+                    continue  # a refused turn was never sent, so the target never answered it
                 role = turn.get("role", "unknown").capitalize()
                 content = turn.get("content", "")
                 lines.append(f"{role}: {content}")
@@ -128,3 +125,10 @@ class AttackSuccessEvaluator(Evaluator[InputT, OutputT]):
 def _attacker_refused(evaluation_case: EvaluationData) -> bool:
     """Return True if the strategy's run stats report that the attacker model declined its role."""
     return bool(_run_results(evaluation_case).get(ATTACKER_REFUSED))
+
+
+def _any_sent_output(conversation: Any) -> bool:
+    """Return True if the task output holds anything the target actually saw, whatever its shape."""
+    if isinstance(conversation, list):
+        return any(not (isinstance(t, dict) and t.get("role") == ATTACKER_REFUSED_ROLE) for t in conversation)
+    return bool(conversation)
