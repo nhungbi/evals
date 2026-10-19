@@ -13,6 +13,7 @@ from strands.models.model import Model
 
 from ..case import RedTeamCase
 from ..types import DEFAULT_SEVERITY, RISK_CATEGORIES, AttackGoal, RedTeamConfig
+from ..types.risk_category import resolve_risk_category
 from .prompt_templates import get_template as _get_prompt_template
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,7 @@ class AdversarialCaseGenerator:
         ```python
         cases = AdversarialCaseGenerator(model=model).generate_cases(
             agent=agent,
-            risk_categories=["guideline_bypass", "data_exfiltration"],
+            risk_categories=["prompt_injection", "data_exfiltration"],
             num_cases=3,
         )
         ```
@@ -137,6 +138,8 @@ class AdversarialCaseGenerator:
         risk_categories: list[str],
         num_cases: int = 5,
     ) -> list[RedTeamCase]:
+        # Dedupe after aliasing so e.g. ["guideline_bypass", "prompt_injection"] generates one set.
+        risk_categories = list(dict.fromkeys(resolve_risk_category(c) for c in risk_categories))
         for risk_category in risk_categories:
             if risk_category not in RISK_CATEGORIES:
                 raise ValueError(

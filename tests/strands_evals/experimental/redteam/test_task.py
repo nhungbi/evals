@@ -48,7 +48,7 @@ def _case(name: str = "c0", strategy: AttackStrategy | None = None) -> RedTeamCa
     case = RedTeamCase(
         name=name,
         input="hello",
-        config=RedTeamConfig(attack_goal=AttackGoal(risk_category="guideline_bypass", actor_goal="goal")),
+        config=RedTeamConfig(attack_goal=AttackGoal(risk_category="prompt_injection", actor_goal="goal")),
         metadata={"strategy": strategy.label},
     )
     case.strategy = strategy
@@ -154,7 +154,7 @@ def test_task_fn_missing_strategy_raises():
     case = RedTeamCase(
         name="c0",
         input="hello",
-        config=RedTeamConfig(attack_goal=AttackGoal(risk_category="guideline_bypass", actor_goal="goal")),
+        config=RedTeamConfig(attack_goal=AttackGoal(risk_category="prompt_injection", actor_goal="goal")),
     )
     with pytest.raises(AttributeError, match="'c0' has no strategy"):
         task(case)
