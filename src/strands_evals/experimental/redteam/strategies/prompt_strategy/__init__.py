@@ -70,6 +70,10 @@ class PromptStrategy(AttackStrategy):
         refusal_stats = self._new_refusal_stats()
 
         while simulator.has_next():
+            # Judged only once it is about to be sent: the message produced alongside the stop signal never is,
+            # so it can't flag the case as refused.
+            if conversation and self._attacker_refused_turn(attacker_message, model, conversation, refusal_stats):
+                break
             try:
                 target_response = target_session.invoke(attacker_message)
             except Exception as e:
@@ -88,8 +92,6 @@ class PromptStrategy(AttackStrategy):
             attacker_message = str(getattr(structured, "message", "")) if structured else ""
             if not attacker_message.strip():
                 logger.warning("reason=<empty_message> | attacker produced empty message | ending case early")
-                break
-            if self._attacker_refused_turn(attacker_message, model, conversation, refusal_stats):
                 break
 
         return AttackRunResult(

@@ -164,6 +164,28 @@ def test_prompt_strategy_attacker_refusal_ends_case_without_sending_it(mock_simu
 
 
 @patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_skips_refusal_check_on_unsent_final_message(mock_simulator_cls):
+    """The message produced with the stop signal is never sent, so it can't flag the case as refused."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.side_effect = [True, False]
+    act_result = MagicMock()
+    act_result.structured_output.message = "I won't continue this"
+    mock_sim.act.return_value = act_result
+    mock_simulator_cls.return_value = mock_sim
+    strategy = _prompt_strategy()
+    strategy._is_attacker_refusal = MagicMock(return_value=True)  # type: ignore[method-assign]
+
+    result = strategy.run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
+
+    strategy._is_attacker_refusal.assert_not_called()
+    assert result.metadata["attacker_refused"] is False
+    assert result.conversation == [
+        {"role": "attacker", "content": "hello"},
+        {"role": "target", "content": "target reply"},
+    ]
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_ctor_max_turns_caps_below_ceiling(mock_simulator_cls):
     """The strategy's own max_turns wins when smaller than the injected ceiling."""
     mock_sim = MagicMock()
