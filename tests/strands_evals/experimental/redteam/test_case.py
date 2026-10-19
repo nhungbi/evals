@@ -26,7 +26,7 @@ def _case() -> RedTeamCase:
     return RedTeamCase(
         name="c0",
         input="hello",
-        config=RedTeamConfig(attack_goal=AttackGoal(risk_category="guideline_bypass", actor_goal="goal")),
+        config=RedTeamConfig(attack_goal=AttackGoal(risk_category="prompt_injection", actor_goal="goal")),
     )
 
 

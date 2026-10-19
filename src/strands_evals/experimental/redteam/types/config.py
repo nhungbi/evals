@@ -2,7 +2,9 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from .risk_category import resolve_risk_category
 
 Severity = Literal["low", "medium", "high", "critical"]
 
@@ -15,6 +17,11 @@ class AttackGoal(BaseModel):
     context: str = ""
     severity: Severity = "medium"
     success_criteria: str | None = None
+
+    @field_validator("risk_category")
+    @classmethod
+    def _resolve_deprecated_category(cls, value: str) -> str:
+        return resolve_risk_category(value)
 
 
 class RedTeamConfig(BaseModel):
