@@ -10,7 +10,7 @@ from rich.console import Console
 
 from ...types.evaluation import EvaluationOutput
 from ...types.evaluation_report import EvaluationReport
-from .strategies.base import ATTACKER_REFUSED, RUN_RESULTS
+from .strategies.base import ATTACKER_REFUSED, _run_results
 
 _console = Console()
 
@@ -364,16 +364,6 @@ def _base_case_is_unique(results: list[AttackResult]) -> bool:
     """Return True if `(base_case, strategy)` keys stay 1:1 after stripping the suffix."""
     keys = [(_base_case(r), r.strategy) for r in results]
     return len(set(keys)) == len(keys)
-
-
-def _run_results(case_data: dict) -> dict:
-    """Return the row's `RUN_RESULTS` environment state, falling back to `metadata` for older reports."""
-    for state in case_data.get("actual_environment_state") or []:
-        if state.get("name") == RUN_RESULTS:
-            run_results = state.get("state")
-            # Custom tasks own `environment_state`; tolerate a non-dict state rather than crash the report.
-            return run_results if isinstance(run_results, dict) else {}
-    return case_data.get("metadata") or {}
 
 
 def _format_run_stats(result: AttackResult) -> str:

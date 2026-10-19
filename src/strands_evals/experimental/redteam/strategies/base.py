@@ -15,6 +15,7 @@ from ....types import EnvironmentState
 from ._common import ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT
 
 if TYPE_CHECKING:
+    from ....types.evaluation import EvaluationData
     from ..case import RedTeamCase
     from .target_session import TargetSession
 
@@ -34,6 +35,26 @@ ATTACKER_REFUSED = "attacker_refused"
 # Conversation role of the refused attacker message a strategy keeps for debugging; it was never sent to
 # the target, so it is the last entry and has no target reply.
 ATTACKER_REFUSED_ROLE = "attacker_refused"
+
+
+def _run_results(case: dict[str, Any] | EvaluationData) -> dict[str, Any]:
+    """Return the case's `RUN_RESULTS` environment state, falling back to `metadata` for older reports.
+
+    Accepts a serialized report row or a live `EvaluationData`. Custom tasks own `environment_state`, so
+    entries may be `EnvironmentState` objects or plain dicts, and a non-dict state reads as `{}`.
+    """
+    if isinstance(case, dict):
+        entries, metadata = case.get("actual_environment_state"), case.get("metadata")
+    else:
+        entries, metadata = case.actual_environment_state, case.metadata
+    for entry in entries or []:
+        if isinstance(entry, dict):
+            name, state = entry.get("name"), entry.get("state")
+        else:
+            name, state = getattr(entry, "name", None), getattr(entry, "state", None)
+        if name == RUN_RESULTS:
+            return state if isinstance(state, dict) else {}
+    return metadata or {}
 
 
 class AttackerRefusalRating(BaseModel):

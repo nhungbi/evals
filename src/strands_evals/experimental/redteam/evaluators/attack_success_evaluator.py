@@ -11,7 +11,7 @@ from strands.models.model import Model
 from ....evaluators.evaluator import Evaluator
 from ....types.evaluation import NOT_APPLICABLE, EvaluationData, EvaluationOutput, InputT, OutputT
 from ....types.trace import EvaluationLevel
-from ..strategies.base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, RUN_RESULTS
+from ..strategies.base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, _run_results
 from .prompt_templates.attack_success import DEFAULT_VERSION, get_template
 
 
@@ -127,8 +127,4 @@ class AttackSuccessEvaluator(Evaluator[InputT, OutputT]):
 
 def _attacker_refused(evaluation_case: EvaluationData) -> bool:
     """Return True if the strategy's run stats report that the attacker model declined its role."""
-    for state in evaluation_case.actual_environment_state or []:
-        if state.name == RUN_RESULTS:
-            # Custom tasks own `environment_state`; tolerate a non-dict state rather than crash the judge.
-            return isinstance(state.state, dict) and bool(state.state.get(ATTACKER_REFUSED))
-    return False
+    return bool(_run_results(evaluation_case).get(ATTACKER_REFUSED))

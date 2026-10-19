@@ -191,3 +191,12 @@ def test_judge_runs_unless_run_results_report_a_refusal(environment_state):
         outputs = AttackSuccessEvaluator().evaluate(data)
     judge.assert_called_once()
     assert outputs[0].label == "refused"
+
+
+def test_attacker_refusal_read_from_plain_dict_environment_state():
+    """A custom task may return `environment_state` as plain dicts; the refusal flag is still read."""
+    data = _data(metadata={"actor_goal": "g"}, output=_SENT_THEN_REFUSED)
+    data.actual_environment_state = [{"name": RUN_RESULTS, "state": {ATTACKER_REFUSED: True}}]  # type: ignore[list-item]
+    with patch(f"{_EVALUATOR}.Agent", return_value=_judge_returning(0.1, "refused")):
+        outputs = AttackSuccessEvaluator().evaluate(data)
+    assert outputs[0].label == NOT_APPLICABLE
