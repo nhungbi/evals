@@ -4,6 +4,7 @@ import inspect
 from unittest.mock import MagicMock, patch
 
 import pytest
+from strands.types.exceptions import ModelThrottledException
 
 from strands_evals.experimental import redteam
 from strands_evals.experimental.redteam import strategies, task
@@ -254,6 +255,52 @@ def test_prompt_strategy_run_attack_handles_target_exception(mock_simulator_cls)
 
     result = _prompt_strategy().run_attack(_case(), _FakeSession(broken), max_turns=3)
     assert "[Error: boom]" in result.conversation[1]["content"]
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_failed_attacker_flags_refusal_and_keeps_turns(mock_simulator_cls):
+    """A content-filtered attacker reply makes `act` raise; the sent turn is kept but can't read as defended."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.return_value = True
+    mock_sim.act.side_effect = AttributeError("'NoneType' object has no attribute 'stop'")
+    mock_simulator_cls.return_value = mock_sim
+
+    result = _prompt_strategy().run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
+
+    assert result.conversation == [
+        {"role": "attacker", "content": "hello"},
+        {"role": "target", "content": "target reply"},
+    ]
+    assert result.metadata["attacker_refused"] is True
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_attacker_throttling_propagates(mock_simulator_cls):
+    """Throttling is transient, not a refusal: it propagates so the base experiment retries the case."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.return_value = True
+    mock_sim.act.side_effect = ModelThrottledException("slow down")
+    mock_simulator_cls.return_value = mock_sim
+
+    with pytest.raises(ModelThrottledException):
+        _prompt_strategy().run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
+
+
+@pytest.mark.parametrize(("simulator_continues", "flagged"), [(True, True), (False, False)])
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_empty_message_flags_refusal_unless_stopped(mock_simulator_cls, simulator_continues, flagged):
+    """An empty message mid-conversation is a silent attacker; alongside the stop signal it just ends the run."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.side_effect = [True, simulator_continues]
+    act_result = MagicMock()
+    act_result.structured_output.message = "  "
+    mock_sim.act.return_value = act_result
+    mock_simulator_cls.return_value = mock_sim
+
+    result = _prompt_strategy().run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
+
+    assert len(result.conversation) == 2
+    assert result.metadata["attacker_refused"] is flagged
 
 
 def _refusal_judge_returning(rating):

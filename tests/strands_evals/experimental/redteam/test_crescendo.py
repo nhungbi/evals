@@ -304,6 +304,8 @@ def test_question_parse_failure_safe_terminates():
     assert result.metadata["parse_failures"] == 1
     assert result.conversation == []  # nothing sent, but no exception
     assert result.strategy_succeeded is False
+    # A filtered attacker reply leaves no message: inconclusive, never an empty transcript read as defended.
+    assert result.metadata["attacker_refused"] is True
 
 
 def test_attacker_refusal_ends_case_without_sending_it():

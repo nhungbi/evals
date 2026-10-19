@@ -17,7 +17,7 @@ from strands import Agent
 from strands.models.model import Model
 
 from ...utils import _put_model_field
-from ..base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
+from ..base import ATTACKER_REFUSED, MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 from ..target_session import _single_shot_attempts
 from . import pair_v0
 
@@ -172,6 +172,7 @@ class PairStrategy(AttackStrategy):
                 p = gen_refined_prompt(attacker, goal, last_response, last_raw_score)
                 if p is None or not p.strip():
                     parse_failures += 1
+                    refusal_stats[ATTACKER_REFUSED] = True
                     logger.warning("reason=<empty_prompt> | attacker produced no prompt | ending case early")
                     break
                 # Judged by the experiment-level model, never the attacker's own.

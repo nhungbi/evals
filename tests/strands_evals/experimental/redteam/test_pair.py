@@ -392,6 +392,8 @@ def test_prompt_parse_failure_ends_early():
     assert result.conversation == []
     assert result.metadata["target_calls"] == 0
     assert result.strategy_succeeded is False
+    # A filtered attacker reply leaves no message: inconclusive, never an empty transcript read as defended.
+    assert result.metadata["attacker_refused"] is True
 
 
 def test_attacker_refusal_ends_case_without_sending_it():

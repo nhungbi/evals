@@ -291,6 +291,9 @@ def test_parse_failure_ends_early():
     )
     assert result.metadata["parse_failures"] == 1
     assert result.metadata["target_calls"] == 1  # only the first turn reached the target
+    # A filtered attacker reply leaves no message; the sent turn is kept but can't read as defended.
+    assert result.metadata["attacker_refused"] is True
+    assert len(result.conversation) == 2
 
 
 def test_attacker_refusal_ends_case_without_sending_it():
@@ -314,6 +317,7 @@ def test_empty_reply_ends_early_without_invoking():
     result = _run(_strategy(), _case(), session, turns=[_turn(reply="   ")])
     assert session.sent == []  # never invoke("")
     assert result.metadata["parse_failures"] == 1
+    assert result.metadata["attacker_refused"] is True
 
 
 def test_empty_target_response_ends_early():
