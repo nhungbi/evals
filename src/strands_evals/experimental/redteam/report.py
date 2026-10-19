@@ -10,7 +10,7 @@ from rich.console import Console
 
 from ...types.evaluation import EvaluationOutput
 from ...types.evaluation_report import EvaluationReport
-from .strategies.base import ATTACKER_REFUSED, _run_results
+from .strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, _run_results
 
 _console = Console()
 
@@ -32,6 +32,7 @@ class AttackResult:
     passes: dict[str, bool] = field(default_factory=dict)
     reasons: dict[str, str] = field(default_factory=dict)
     attacker_refused: bool = False
+    refusal_judge_failures: int | None = None
 
     @property
     def score(self) -> float:
@@ -153,6 +154,7 @@ class RedTeamReport(EvaluationReport):
                     conversation=case_data.get("actual_output") or [],
                     pruned_branches=run_results.get("pruned_branches") or [],
                     attacker_refused=bool(run_results.get(ATTACKER_REFUSED)),
+                    refusal_judge_failures=run_results.get(REFUSAL_JUDGE_FAILURES),
                 ),
             )
             result.reasons[evaluator] = self.reasons[i]
@@ -375,4 +377,7 @@ def _format_run_stats(result: AttackResult) -> str:
         parts.append(f"backtracks={result.backtracks}")
     if result.pruned_branches:
         parts.append(f"blocked={len(result.pruned_branches) // 2}")
+    # Messages sent without a refusal verdict: an attacker refusal among them would read as a defense.
+    if result.refusal_judge_failures:
+        parts.append(f"refusal_judge_failures={result.refusal_judge_failures}")
     return ", ".join(parts)

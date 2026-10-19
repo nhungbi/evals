@@ -36,6 +36,10 @@ ATTACKER_REFUSED = "attacker_refused"
 # the target, so it is the last entry and has no target reply.
 ATTACKER_REFUSED_ROLE = "attacker_refused"
 
+# Run-stats key counting attacker messages the refusal judge failed to judge; each was sent anyway, so a
+# non-zero count means refusal detection was degraded for the case.
+REFUSAL_JUDGE_FAILURES = "refusal_judge_failures"
+
 
 def _run_results(case: dict[str, Any] | EvaluationData) -> dict[str, Any]:
     """Return the case's `RUN_RESULTS` environment state, falling back to `metadata` for older reports.
@@ -155,30 +159,67 @@ class AttackStrategy(ABC):
     def reset(self) -> None:  # noqa: B027
         """Per-case reset hook; no-op by default. Override only if `self` holds mutable state."""
 
-    def _is_attacker_refusal(self, message: str, model: Model | str | None) -> bool:
-        """Return True if the attacker's `message` declines its role, judged by a fresh LLM judge.
+    def _new_refusal_stats(self) -> dict[str, Any]:
+        """Return fresh per-run stats for `_attacker_refused_turn`; merge them into the run's `metadata`."""
+        return {ATTACKER_REFUSED: False, REFUSAL_JUDGE_FAILURES: 0}
 
-        Strategies with an attacker model call this on each message before sending it. When it fires, they
-        set `ATTACKER_REFUSED` in their run stats and keep the message as a final `ATTACKER_REFUSED_ROLE`
-        conversation entry instead of sending it: sent to the target, a refusal would read as a defended
-        target. Every message is judged, since a phrase prefilter would let a refusal without a
-        known phrase through; only the message is sent, so the call stays small. A judge that fails keeps
-        the turn rather than abort the case and lose the turns already collected.
+    def _attacker_refused_turn(
+        self,
+        message: str,
+        model: Model | str | None,
+        conversation: list[dict[str, Any]],
+        stats: dict[str, Any],
+    ) -> bool:
+        """Judge the attacker's `message` before it is sent; return True if it declined its role.
+
+        Strategies with an attacker model call this on each message and stop the attack when it returns True:
+        sent to the target, a refusal would read as a defended target. On a refusal, `ATTACKER_REFUSED` is set
+        in `stats` and the message is kept as a final `ATTACKER_REFUSED_ROLE` entry in `conversation`. A judge
+        failure keeps the turn rather than abort the case and lose the turns already collected, and is counted
+        under `REFUSAL_JUDGE_FAILURES` so degraded detection shows in the report. `stats` and `conversation`
+        are `run_attack` locals, so the shared instance holds no per-case state.
+
+        Args:
+            message: The attacker's message, before it is sent to the target.
+            model: The experiment-level `model` `run_attack` received, i.e. the evaluator's (default model when
+                unset); never the strategy's own attacker model, which is often a weak model picked to play
+                the role and so the least reliable judge.
+            conversation: The run's conversation; receives the refused message.
+            stats: The run's refusal stats from `_new_refusal_stats`.
+        """
+        refused = self._is_attacker_refusal(message, model)
+        if refused is None:
+            stats[REFUSAL_JUDGE_FAILURES] += 1
+            return False
+        if refused:
+            stats[ATTACKER_REFUSED] = True
+            conversation.append({"role": ATTACKER_REFUSED_ROLE, "content": message})
+            logger.warning("reason=<attacker_refused> | attacker declined its role | ending case early")
+        return refused
+
+    def _is_attacker_refusal(self, message: str, model: Model | str | None) -> bool | None:
+        """Return whether the attacker's `message` declines its role, judged by a fresh LLM judge.
+
+        Every message is judged, since a phrase prefilter would let a refusal without a known phrase through;
+        only the message is sent, so the call stays small.
 
         Args:
             message: The attacker's message, before it is sent to the target.
             model: Model for the judge.
+
+        Returns:
+            The judge's verdict, or None if the judge raised or produced no structured output.
         """
         judge = Agent(model=model, system_prompt=ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT, callback_handler=None)
         try:
             result = judge(f"# Attacker Message\n{message}", structured_output_model=AttackerRefusalRating)
         except Exception as e:
             logger.warning("error=<%s> | refusal judge failed | keeping turn", e)
-            return False
+            return None
         rating = result.structured_output
         if rating is None:
             logger.warning("reason=<parse_failure> | refusal judge produced no structured output | keeping turn")
-            return False
+            return None
         return bool(rating.is_refusal)
 
     def to_dict(self) -> dict[str, Any]:

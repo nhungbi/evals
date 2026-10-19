@@ -300,6 +300,7 @@ def test_returns_attack_run_result_shape():
         "iterations": 1,
         "parse_failures": 0,
         "attacker_refused": False,
+        "refusal_judge_failures": 0,
     }
     assert result.pruned_branches == []
 

@@ -234,6 +234,7 @@ def test_returns_attack_run_result_shape():
         "parse_failures": 0,
         "attacks_used": ["hypothetical"],  # _turn default attack
         "attacker_refused": False,
+        "refusal_judge_failures": 0,
     }
 
 
@@ -265,6 +266,7 @@ def test_runs_to_cap_when_never_succeeds():
         "parse_failures": 0,
         "attacks_used": ["hypothetical", "hypothetical", "hypothetical"],
         "attacker_refused": False,
+        "refusal_judge_failures": 0,
     }
 
 
@@ -328,6 +330,7 @@ def test_empty_target_response_ends_early():
         "parse_failures": 0,
         "attacks_used": [],
         "attacker_refused": False,
+        "refusal_judge_failures": 0,
         "reasoning_trace": [],
     }
 
@@ -345,6 +348,7 @@ def test_first_turn_breach_records_pair_and_attacks():
         "parse_failures": 0,
         "attacks_used": ["hypothetical"],
         "attacker_refused": False,
+        "refusal_judge_failures": 0,
         "reasoning_trace": [{"observation": "o1", "thought": "t1", "strategy": "s1"}],
     }
 

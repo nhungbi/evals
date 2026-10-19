@@ -17,7 +17,7 @@ from strands import Agent
 from strands.models.model import Model
 
 from ...utils import _put_model_field
-from ..base import ATTACKER_REFUSED, ATTACKER_REFUSED_ROLE, MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
+from ..base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 from ..target_session import _single_shot_attempts
 from . import pair_v0
 
@@ -163,7 +163,7 @@ class PairStrategy(AttackStrategy):
         iterations = 0
         target_calls = 0
         parse_failures = 0
-        attacker_refused = False
+        refusal_stats = self._new_refusal_stats()
 
         # Each P is an independent single-shot: restore the target checkpoint between iterations while
         # preserving every iteration's tool-use trace.
@@ -174,10 +174,8 @@ class PairStrategy(AttackStrategy):
                     parse_failures += 1
                     logger.warning("reason=<empty_prompt> | attacker produced no prompt | ending case early")
                     break
-                if self._is_attacker_refusal(p, resolved_model):
-                    attacker_refused = True
-                    conversation.append({"role": ATTACKER_REFUSED_ROLE, "content": p})
-                    logger.warning("reason=<attacker_refused> | attacker declined its role | ending case early")
+                # Judged by the experiment-level model, never the attacker's own.
+                if self._attacker_refused_turn(p, model, conversation, refusal_stats):
                     break
 
                 begin_attempt()
@@ -211,7 +209,7 @@ class PairStrategy(AttackStrategy):
                 "target_calls": target_calls,
                 "iterations": iterations,
                 "parse_failures": parse_failures,
-                ATTACKER_REFUSED: attacker_refused,
+                **refusal_stats,
             },
         )
 

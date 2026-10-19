@@ -181,7 +181,14 @@ def test_returns_attack_run_result_shape():
     ):
         result = strat.run_attack(_case(), _session(lambda _m: "engaged reply"), max_turns=10)
     assert isinstance(result, AttackRunResult)
-    assert set(result.metadata) == {"turns_used", "target_calls", "backtracks", "parse_failures", "attacker_refused"}
+    assert set(result.metadata) == {
+        "turns_used",
+        "target_calls",
+        "backtracks",
+        "parse_failures",
+        "attacker_refused",
+        "refusal_judge_failures",
+    }
 
 
 def test_backtracks_on_refusal_without_consuming_conversation():
@@ -318,6 +325,32 @@ def test_attacker_refusal_ends_case_without_sending_it():
     assert result.metadata["attacker_refused"] is True
     assert result.metadata["turns_used"] == 1
     assert result.strategy_succeeded is False
+
+
+def test_attacker_refusal_judged_by_experiment_model_not_attacker_model():
+    """The refusal judge runs on the experiment-level (evaluator) model, never the strategy's attacker model."""
+    strat = _strategy(max_turns=1, model="attacker-model")
+    with (
+        patch(f"{_CRESCENDO}.gen_escalating_question", return_value="q1"),
+        patch(f"{_CRESCENDO}.success_score", return_value=0.0),
+    ):
+        strat.run_attack(_case(), _session(lambda _m: "reply"), max_turns=10, model="experiment-model")
+    strat._is_attacker_refusal.assert_called_once_with("q1", "experiment-model")  # type: ignore[attr-defined]
+
+
+def test_refusal_judge_failures_are_counted_and_turns_kept():
+    """A failed refusal verdict sends the message anyway and is counted, so degraded detection is visible."""
+    strat = _strategy(max_turns=2)
+    strat._is_attacker_refusal = MagicMock(return_value=None)  # type: ignore[method-assign]
+    sent: list[str] = []
+    with (
+        patch(f"{_CRESCENDO}.gen_escalating_question", side_effect=["q1", "q2"]),
+        patch(f"{_CRESCENDO}.success_score", return_value=0.0),
+    ):
+        result = strat.run_attack(_case(), _session(lambda m: sent.append(m) or "reply"), max_turns=10)
+    assert sent == ["q1", "q2"]
+    assert result.metadata["refusal_judge_failures"] == 2
+    assert result.metadata["attacker_refused"] is False
 
 
 def test_ctor_model_takes_precedence():

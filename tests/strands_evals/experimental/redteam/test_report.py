@@ -5,7 +5,7 @@ import warnings
 import pytest
 
 from strands_evals.experimental.redteam.report import AttackResult, RedTeamReport
-from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, RUN_RESULTS
+from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, RUN_RESULTS
 from strands_evals.types.evaluation import NOT_APPLICABLE, EvaluationOutput
 from strands_evals.types.evaluation_report import EvaluationReport
 
@@ -499,6 +499,27 @@ class TestAttackerRefused:
         ).attack_results()[0]
         assert r.attacker_refused is False
         assert r.state == "defended"
+
+
+class TestRefusalJudgeFailures:
+    """Attacker messages sent without a refusal verdict show in the run stats, so degraded detection is visible."""
+
+    @staticmethod
+    def _report(failures: int) -> RedTeamReport:
+        case = _case("c0", "guideline_bypass", "crescendo", "high")
+        case["actual_environment_state"] = [{"name": RUN_RESULTS, "state": {REFUSAL_JUDGE_FAILURES: failures}}]
+        return RedTeamReport.from_evaluation_report(_eval_report("custom", [case], [0.0], [True], ["judged"]))
+
+    def test_read_from_run_stats(self):
+        assert self._report(3).attack_results()[0].refusal_judge_failures == 3
+
+    def test_shown_when_non_zero(self, capsys):
+        self._report(3).display(verbose=True)
+        assert "refusal_judge_failures=3" in capsys.readouterr().out
+
+    def test_hidden_when_zero(self, capsys):
+        self._report(0).display(verbose=True)
+        assert "refusal_judge_failures" not in capsys.readouterr().out
 
 
 class TestAggregations:

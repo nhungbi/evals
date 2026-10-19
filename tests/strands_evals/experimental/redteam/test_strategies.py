@@ -260,14 +260,38 @@ def test_attacker_refusal_check_judges_every_message_with_only_the_message():
     assert judge.call_args.kwargs["structured_output_model"] is AttackerRefusalRating
 
 
-def test_attacker_refusal_check_parse_failure_keeps_the_turn():
-    """A judge that returns no structured output is not evidence of a refusal."""
+def test_attacker_refusal_check_parse_failure_returns_none():
+    """A judge that returns no structured output gives no verdict, so the caller can count the failure."""
     with patch(f"{_BASE}.Agent", return_value=_refusal_judge_returning(None)):
-        assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is False
+        assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is None
 
 
-def test_attacker_refusal_check_judge_error_keeps_the_turn():
-    """A judge that raises (throttle, structured-output failure) keeps the turn instead of aborting the case."""
+def test_attacker_refusal_check_judge_error_returns_none():
+    """A judge that raises (throttle, structured-output failure) gives no verdict instead of aborting the case."""
     judge = MagicMock(side_effect=RuntimeError("throttled"))
     with patch(f"{_BASE}.Agent", return_value=judge):
-        assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is False
+        assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is None
+
+
+@pytest.mark.parametrize(
+    ("verdict", "stopped", "stats", "conversation"),
+    [
+        (False, False, {"attacker_refused": False, "refusal_judge_failures": 0}, []),
+        (None, False, {"attacker_refused": False, "refusal_judge_failures": 1}, []),
+        (
+            True,
+            True,
+            {"attacker_refused": True, "refusal_judge_failures": 0},
+            [{"role": "attacker_refused", "content": "msg"}],
+        ),
+    ],
+)
+def test_attacker_refused_turn_records_the_verdict(verdict, stopped, stats, conversation):
+    strategy = PromptStrategy("s", "t")
+    strategy._is_attacker_refusal = MagicMock(return_value=verdict)  # type: ignore[method-assign]
+    run_stats = strategy._new_refusal_stats()
+    run_conversation: list[dict] = []
+    assert strategy._attacker_refused_turn("msg", "m", run_conversation, run_stats) is stopped
+    assert run_stats == stats
+    assert run_conversation == conversation
+    strategy._is_attacker_refusal.assert_called_once_with("msg", "m")
