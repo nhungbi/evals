@@ -12,7 +12,8 @@ from ..types.evaluation import EvaluationOutput
 from ..types.evaluation_report import EvaluationReport
 from .strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, _run_results
 
-_console = Console()
+# Transcripts are untrusted model text, so square brackets must print literally, not parse as Rich markup.
+_console = Console(markup=False)
 
 
 @dataclass
