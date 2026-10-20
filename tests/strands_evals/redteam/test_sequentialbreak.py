@@ -6,18 +6,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 from strands import Agent
 
-from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies import BUILTIN_STRATEGIES, SequentialBreakStrategy
-from strands_evals.experimental.redteam.strategies.base import AttackRunResult
-from strands_evals.experimental.redteam.strategies.sequentialbreak import (
+from strands_evals.redteam.case import RedTeamCase
+from strands_evals.redteam.strategies import BUILTIN_STRATEGIES, SequentialBreakStrategy
+from strands_evals.redteam.strategies.base import AttackRunResult
+from strands_evals.redteam.strategies.sequentialbreak import (
     assemble_scaffold,
     sequentialbreak_v0,
     success_score,
 )
-from strands_evals.experimental.redteam.strategies.target_session import StrandsAgentSession, TargetCheckpoint
-from strands_evals.experimental.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.redteam.strategies.target_session import StrandsAgentSession, TargetCheckpoint
+from strands_evals.redteam.types import AttackGoal, RedTeamConfig
 
-_SB = "strands_evals.experimental.redteam.strategies.sequentialbreak"
+_SB = "strands_evals.redteam.strategies.sequentialbreak"
 _ALL_VARIANTS = ["dc_t1", "dc_t2", "ge_t1", "ge_t2", "qb_t1"]
 
 

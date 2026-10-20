@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies.base import RUN_RESULTS, AttackRunResult, AttackStrategy
-from strands_evals.experimental.redteam.task import (
+from strands_evals.redteam.case import RedTeamCase
+from strands_evals.redteam.strategies.base import RUN_RESULTS, AttackRunResult, AttackStrategy
+from strands_evals.redteam.task import (
     MAX_ALLOWED_TURNS,
     _build_attacker_task,
 )
-from strands_evals.experimental.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.redteam.types import AttackGoal, RedTeamConfig
 
 
 class _StubStrategy(AttackStrategy):
@@ -77,7 +77,7 @@ class _FakeSession:
 
 def test_run_attack_receives_max_allowed_turns_ceiling():
     """task_fn passes MAX_ALLOWED_TURNS as the hard ceiling; the strategy owns its budget."""
-    from strands_evals.experimental.redteam.task import MAX_ALLOWED_TURNS
+    from strands_evals.redteam.task import MAX_ALLOWED_TURNS
 
     strat = _StubStrategy()
     _build_attacker_task(_FakeSession(lambda _msg: "ok"))(_case(strategy=strat))
@@ -328,7 +328,7 @@ def test_task_fn_routes_multi_agent_base_to_multi_agent_session():
     StrandsAgentSession) and the baseline is captured once at build time."""
     from strands.multiagent.base import MultiAgentBase
 
-    from strands_evals.experimental.redteam.strategies.target_session import (
+    from strands_evals.redteam.strategies.target_session import (
         StrandsMultiAgentSession,
         _MultiAgentSnapshot,
     )

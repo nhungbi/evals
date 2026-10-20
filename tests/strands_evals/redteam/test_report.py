@@ -4,8 +4,8 @@ import warnings
 
 import pytest
 
-from strands_evals.experimental.redteam.report import AttackResult, RedTeamReport
-from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, RUN_RESULTS
+from strands_evals.redteam.report import AttackResult, RedTeamReport
+from strands_evals.redteam.strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, RUN_RESULTS
 from strands_evals.types.evaluation import NOT_APPLICABLE, EvaluationOutput
 from strands_evals.types.evaluation_report import EvaluationReport
 

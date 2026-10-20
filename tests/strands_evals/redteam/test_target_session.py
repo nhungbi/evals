@@ -6,8 +6,8 @@ import pytest
 from strands import Agent
 from strands.multiagent import Swarm
 
-from strands_evals.experimental import redteam
-from strands_evals.experimental.redteam.strategies.target_session import (
+from strands_evals import redteam
+from strands_evals.redteam.strategies.target_session import (
     MALFORMED_TOOL_NAME,
     StrandsAgentSession,
     StrandsMultiAgentSession,

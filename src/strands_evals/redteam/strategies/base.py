@@ -11,11 +11,11 @@ from pydantic import BaseModel, Field
 from strands import Agent
 from strands.models.model import Model
 
-from ....types import EnvironmentState
+from ...types import EnvironmentState
 from ._common import ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT
 
 if TYPE_CHECKING:
-    from ....types.evaluation import EvaluationData
+    from ...types.evaluation import EvaluationData
     from ..case import RedTeamCase
     from .target_session import TargetSession
 

@@ -1,4 +1,4 @@
-from . import chaos, detectors, evaluators, extractors, generators, providers, simulation, telemetry, types
+from . import chaos, detectors, evaluators, extractors, generators, providers, redteam, simulation, telemetry, types
 from .case import Case
 from .eval_task_handler import EvalTaskHandler, TracedHandler, eval_task
 from .evaluation_data_store import EvaluationDataStore
@@ -26,6 +26,7 @@ __all__ = [
     "evaluators",
     "extractors",
     "providers",
+    "redteam",
     "types",
     "generators",
     "simulation",

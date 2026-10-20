@@ -2,7 +2,7 @@
 
 Adversarial safety testing for Strands agents. Red teaming runs attack strategies drawn from published jailbreak research against an agent and scores whether each attack succeeded — probing what the agent does under hostile input (prompt injection, data exfiltration, excessive tool use, privilege escalation) rather than how well it performs on cooperative input.
 
-> **Experimental.** This module lives under `strands_evals.experimental.redteam`. The API is still evolving and may change in a minor release.
+> **Moved.** This module used to live under `strands_evals.experimental.redteam`. That import path still works but emits a `DeprecationWarning`; import from `strands_evals.redteam` instead.
 
 ## How it works
 
@@ -24,7 +24,7 @@ RedTeamExperiment ──drives──► AttackStrategy ──invoke──► tar
 ```python
 import asyncio
 from strands import Agent
-from strands_evals.experimental.redteam import (
+from strands_evals.redteam import (
     AdversarialCaseGenerator,
     CrescendoStrategy,
     GoatStrategy,
@@ -83,9 +83,9 @@ task, wrap a freshly built target with `as_target_session(target)`: an `Agent` b
 | `BadLikertJudgeStrategy` | Casts the target as a harmfulness-rating judge, elicits a top-score example | no | [Unit 42](https://unit42.paloaltonetworks.com/multi-turn-technique-jailbreaks-llms/) |
 | `SequentialBreakStrategy` | Hides the harmful request among benign siblings in one narrative scaffold | no | [arXiv:2411.06426](https://arxiv.org/abs/2411.06426) |
 
-Each strategy accepts a `max_turns=` kwarg (its own per-attack ceiling); the built-in task additionally caps every strategy at a hard `MAX_ALLOWED_TURNS = 50` (`strategies/base.py`, exported from `strands_evals.experimental.redteam`), so a strategy configured higher will be silently clamped. A custom task can omit `run_attack`'s `max_turns`, which defaults to that ceiling. A custom `AttackStrategy` subclass should declare the same default (`max_turns: int = MAX_ALLOWED_TURNS`); one that declares `max_turns: int` without it still works with `RedTeamExperiment`, which always passes the value, but a custom task must pass `max_turns=` explicitly. Pass `label="..."` to compare two instances of the same strategy in one experiment (e.g. `CrescendoStrategy(max_turns=5, label="cresc_short")`); duplicate labels raise at construction.
+Each strategy accepts a `max_turns=` kwarg (its own per-attack ceiling); the built-in task additionally caps every strategy at a hard `MAX_ALLOWED_TURNS = 50` (`strategies/base.py`, exported from `strands_evals.redteam`), so a strategy configured higher will be silently clamped. A custom task can omit `run_attack`'s `max_turns`, which defaults to that ceiling. A custom `AttackStrategy` subclass should declare the same default (`max_turns: int = MAX_ALLOWED_TURNS`); one that declares `max_turns: int` without it still works with `RedTeamExperiment`, which always passes the value, but a custom task must pass `max_turns=` explicitly. Pass `label="..."` to compare two instances of the same strategy in one experiment (e.g. `CrescendoStrategy(max_turns=5, label="cresc_short")`); duplicate labels raise at construction.
 
-`PromptStrategy` (a system-prompt-template strategy whose attacker is an `ActorSimulator` LLM) and the `BUILTIN_STRATEGIES` registry are the extension points for adding new template-driven strategies without subclassing — see `strategies/prompt_strategy/`. The full set of exported symbols (experiment, cases, evaluator, target sessions) is the `__all__` of `strands_evals.experimental.redteam`.
+`PromptStrategy` (a system-prompt-template strategy whose attacker is an `ActorSimulator` LLM) and the `BUILTIN_STRATEGIES` registry are the extension points for adding new template-driven strategies without subclassing — see `strategies/prompt_strategy/`. The full set of exported symbols (experiment, cases, evaluator, target sessions) is the `__all__` of `strands_evals.redteam`.
 
 ### Choosing an attacker model
 
@@ -124,7 +124,7 @@ agent's reply is `sensitive_data`.
 Hand-author a case when you need to probe a domain-specific risk:
 
 ```python
-from strands_evals.experimental.redteam import (
+from strands_evals.redteam import (
     AttackGoal,
     RedTeamCase,
     RedTeamConfig,
@@ -153,7 +153,7 @@ configuration without standing up a live agent — e.g. generating a case suite 
 deployed system's config snapshot, then replaying later against the live agent:
 
 ```python
-from strands_evals.experimental.redteam import AdversarialCaseGenerator, TargetSpec
+from strands_evals.redteam import AdversarialCaseGenerator, TargetSpec
 
 cases = AdversarialCaseGenerator().generate_cases(
     agent=TargetSpec(

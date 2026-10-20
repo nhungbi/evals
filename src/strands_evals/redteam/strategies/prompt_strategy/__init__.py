@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 from strands.models.model import Model
 
-from .....simulation.actor_simulator import ActorSimulator
-from .....types.simulation import ActorProfile
-from .....utils import is_throttling_error
+from ....simulation.actor_simulator import ActorSimulator
+from ....types.simulation import ActorProfile
+from ....utils import is_throttling_error
 from ..base import ATTACKER_REFUSED, MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 
 if TYPE_CHECKING:

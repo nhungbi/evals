@@ -5,8 +5,8 @@ from typing import Any
 from pydantic import PrivateAttr, model_validator
 from typing_extensions import Self
 
-from ...case import Case
-from ...types import InputT, OutputT
+from ..case import Case
+from ..types import InputT, OutputT
 from .strategies.base import AttackStrategy
 from .types import RedTeamConfig
 from .types.risk_category import resolve_risk_category

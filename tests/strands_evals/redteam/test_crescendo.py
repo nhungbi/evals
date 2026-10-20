@@ -2,18 +2,18 @@
 
 from unittest.mock import MagicMock, patch
 
-from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies import BUILTIN_STRATEGIES, CrescendoStrategy
-from strands_evals.experimental.redteam.strategies.base import AttackRunResult
-from strands_evals.experimental.redteam.strategies.crescendo import (
+from strands_evals.redteam.case import RedTeamCase
+from strands_evals.redteam.strategies import BUILTIN_STRATEGIES, CrescendoStrategy
+from strands_evals.redteam.strategies.base import AttackRunResult
+from strands_evals.redteam.strategies.crescendo import (
     gen_escalating_question,
     is_refusal,
     success_score,
 )
-from strands_evals.experimental.redteam.strategies.target_session import TargetCheckpoint
-from strands_evals.experimental.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.redteam.strategies.target_session import TargetCheckpoint
+from strands_evals.redteam.types import AttackGoal, RedTeamConfig
 
-_CRESCENDO = "strands_evals.experimental.redteam.strategies.crescendo"
+_CRESCENDO = "strands_evals.redteam.strategies.crescendo"
 
 
 class _FakeSession:

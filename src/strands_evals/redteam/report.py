@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 
 from rich.console import Console
 
-from ...types.evaluation import EvaluationOutput
-from ...types.evaluation_report import EvaluationReport
+from ..types.evaluation import EvaluationOutput
+from ..types.evaluation_report import EvaluationReport
 from .strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, _run_results
 
 _console = Console()

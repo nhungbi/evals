@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from strands import Agent as RealAgent
 
-from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.generators.adversarial import (
+from strands_evals.redteam.case import RedTeamCase
+from strands_evals.redteam.generators.adversarial import (
     AdversarialCaseGenerator,
     AttackCase,
     AttackCases,
@@ -35,8 +35,8 @@ def _make_agent_mock():
 @pytest.fixture
 def patched_agent():
     with (
-        patch("strands_evals.experimental.redteam.generators.adversarial.Agent") as mock_agent_cls,
-        patch("strands_evals.experimental.redteam.generators.adversarial._extract_tool_info") as mock_extract,
+        patch("strands_evals.redteam.generators.adversarial.Agent") as mock_agent_cls,
+        patch("strands_evals.redteam.generators.adversarial._extract_tool_info") as mock_extract,
     ):
         agent = MagicMock()
         response = MagicMock()
@@ -185,7 +185,7 @@ def _make_agent_for_extract(tools_config=None, system_prompt="sys"):
 
 class TestExtractToolInfo:
     def test_returns_system_prompt_and_empty_tools(self):
-        from strands_evals.experimental.redteam.generators.adversarial import _extract_tool_info
+        from strands_evals.redteam.generators.adversarial import _extract_tool_info
 
         info = _extract_tool_info(_make_agent_for_extract())
         assert info["system_prompt"] == "sys"
@@ -193,7 +193,7 @@ class TestExtractToolInfo:
         assert "0 tools" in info["description"]
 
     def test_extracts_tool_definitions(self):
-        from strands_evals.experimental.redteam.generators.adversarial import _extract_tool_info
+        from strands_evals.redteam.generators.adversarial import _extract_tool_info
 
         tools_config = {
             "lookup": {
@@ -209,19 +209,19 @@ class TestExtractToolInfo:
         assert "lookup" in info["description"]
 
     def test_handles_missing_input_schema(self):
-        from strands_evals.experimental.redteam.generators.adversarial import _extract_tool_info
+        from strands_evals.redteam.generators.adversarial import _extract_tool_info
 
         info = _extract_tool_info(_make_agent_for_extract(tools_config={"t": {"name": "t"}}))
         assert info["tools"][0]["parameters"] == {}
 
     def test_none_system_prompt_becomes_empty_string(self):
-        from strands_evals.experimental.redteam.generators.adversarial import _extract_tool_info
+        from strands_evals.redteam.generators.adversarial import _extract_tool_info
 
         info = _extract_tool_info(_make_agent_for_extract(system_prompt=None))
         assert info["system_prompt"] == ""
 
     def test_swallows_registry_errors(self):
-        from strands_evals.experimental.redteam.generators.adversarial import _extract_tool_info
+        from strands_evals.redteam.generators.adversarial import _extract_tool_info
 
         agent = MagicMock()
         agent.system_prompt = "sys"

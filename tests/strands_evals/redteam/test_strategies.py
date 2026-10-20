@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from strands.types.exceptions import ModelThrottledException
 
-from strands_evals.experimental import redteam
-from strands_evals.experimental.redteam import strategies, task
-from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies import (
+from strands_evals import redteam
+from strands_evals.redteam import strategies, task
+from strands_evals.redteam.case import RedTeamCase
+from strands_evals.redteam.strategies import (
     BUILTIN_STRATEGIES,
     RUN_RESULTS,
     BadLikertJudgeStrategy,
@@ -20,12 +20,12 @@ from strands_evals.experimental.redteam.strategies import (
     SequentialBreakStrategy,
     base,
 )
-from strands_evals.experimental.redteam.strategies._common import ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT
-from strands_evals.experimental.redteam.strategies.base import AttackerRefusalRating, AttackRunResult, AttackStrategy
-from strands_evals.experimental.redteam.strategies.target_session import TargetCheckpoint
-from strands_evals.experimental.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.redteam.strategies._common import ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT
+from strands_evals.redteam.strategies.base import AttackerRefusalRating, AttackRunResult, AttackStrategy
+from strands_evals.redteam.strategies.target_session import TargetCheckpoint
+from strands_evals.redteam.types import AttackGoal, RedTeamConfig
 
-_BASE = "strands_evals.experimental.redteam.strategies.base"
+_BASE = "strands_evals.redteam.strategies.base"
 
 
 class _FakeSession:
@@ -114,7 +114,7 @@ def test_prompt_strategy_label_override():
     assert strategy.label == "grad-5"
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_run_attack_drives_loop(mock_simulator_cls):
     """PromptStrategy.run_attack drives the ActorSimulator loop via the injected call_target."""
     mock_sim = MagicMock()
@@ -138,7 +138,7 @@ def test_prompt_strategy_run_attack_drives_loop(mock_simulator_cls):
     assert "{max_turns}" not in template and "7" in template
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_attacker_refusal_ends_case_without_sending_it(mock_simulator_cls):
     """A simulator message that declines the attacker role stops the attack before reaching the target."""
     mock_sim = MagicMock()
@@ -164,7 +164,7 @@ def test_prompt_strategy_attacker_refusal_ends_case_without_sending_it(mock_simu
     strategy._is_attacker_refusal.assert_called_once_with("I can't play this role", None)
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_skips_refusal_check_on_unsent_final_message(mock_simulator_cls):
     """The message produced with the stop signal is never sent, so it can't flag the case as refused."""
     mock_sim = MagicMock()
@@ -186,7 +186,7 @@ def test_prompt_strategy_skips_refusal_check_on_unsent_final_message(mock_simula
     ]
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_ctor_max_turns_caps_below_ceiling(mock_simulator_cls):
     """The strategy's own max_turns wins when smaller than the injected ceiling."""
     mock_sim = MagicMock()
@@ -223,7 +223,7 @@ def test_run_attack_max_turns_defaults_to_ceiling(strategy_cls):
     assert default == base.MAX_ALLOWED_TURNS
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_run_attack_without_max_turns_runs_under_ceiling(mock_simulator_cls):
     mock_simulator_cls.return_value.has_next.return_value = False
 
@@ -233,7 +233,7 @@ def test_run_attack_without_max_turns_runs_under_ceiling(mock_simulator_cls):
     assert mock_simulator_cls.call_args.kwargs["max_turns"] == base.MAX_ALLOWED_TURNS
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_run_attack_explicit_max_turns_above_ceiling_is_honored(mock_simulator_cls):
     """Only the built-in task enforces MAX_ALLOWED_TURNS; a direct caller's explicit value is not clamped."""
     mock_simulator_cls.return_value.has_next.return_value = False
@@ -244,7 +244,7 @@ def test_run_attack_explicit_max_turns_above_ceiling_is_honored(mock_simulator_c
     assert mock_simulator_cls.call_args.kwargs["max_turns"] == 80
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_run_attack_handles_target_exception(mock_simulator_cls):
     mock_sim = MagicMock()
     mock_sim.has_next.side_effect = [True, False]
@@ -257,7 +257,7 @@ def test_prompt_strategy_run_attack_handles_target_exception(mock_simulator_cls)
     assert "[Error: boom]" in result.conversation[1]["content"]
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_failed_attacker_flags_refusal_and_keeps_turns(mock_simulator_cls):
     """A content-filtered attacker reply makes `act` raise; the sent turn is kept but can't read as defended."""
     mock_sim = MagicMock()
@@ -274,7 +274,7 @@ def test_prompt_strategy_failed_attacker_flags_refusal_and_keeps_turns(mock_simu
     assert result.metadata["attacker_refused"] is True
 
 
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_attacker_throttling_propagates(mock_simulator_cls):
     """Throttling is transient, not a refusal: it propagates so the base experiment retries the case."""
     mock_sim = MagicMock()
@@ -287,7 +287,7 @@ def test_prompt_strategy_attacker_throttling_propagates(mock_simulator_cls):
 
 
 @pytest.mark.parametrize(("simulator_continues", "flagged"), [(True, True), (False, False)])
-@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
 def test_prompt_strategy_empty_message_flags_refusal_unless_stopped(mock_simulator_cls, simulator_continues, flagged):
     """An empty message mid-conversation is a silent attacker; alongside the stop signal it just ends the run."""
     mock_sim = MagicMock()

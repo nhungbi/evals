@@ -373,11 +373,11 @@ Note: this leaves spans in the exporter across cases (no `clear()`); memory grow
 
 ## Red Team (adversarial evaluation)
 
-Lives under `strands_evals.experimental.redteam`. Runs the case × strategy cross-product against a target agent and produces a `RedTeamReport`.
+Lives under `strands_evals.redteam`. Runs the case × strategy cross-product against a target agent and produces a `RedTeamReport`.
 
 ```python
 from strands import Agent
-from strands_evals.experimental.redteam import (
+from strands_evals.redteam import (
     RedTeamExperiment, AdversarialCaseGenerator, AttackSuccessEvaluator,
     CrescendoStrategy, GoatStrategy, PairStrategy,
     BadLikertJudgeStrategy, SequentialBreakStrategy, PromptStrategy,
@@ -428,7 +428,7 @@ Cases are typed `RedTeamCase` carrying a `RedTeamConfig(attack_goal=AttackGoal(r
 
 **Hard turn cap:** the built-in task passes `MAX_ALLOWED_TURNS = 50` (`strategies/base.py`) regardless of a strategy's own `max_turns`, and `run_attack`'s `max_turns` defaults to it. A `CrescendoStrategy(max_turns=100)` will still stop at 50 inside `RedTeamExperiment`. Lower turn budgets honor the strategy setting.
 
-Stability: `experimental.redteam` APIs may change in a minor release. Breaking changes (renames, removed args, changed defaults) go through a deprecation cycle with a `DeprecationWarning` for at least one minor version.
+Stability: breaking changes to `strands_evals.redteam` (renames, removed args, changed defaults) go through a deprecation cycle with a `DeprecationWarning` for at least one minor version. The old `strands_evals.experimental.redteam` import path still works but is deprecated.
 
 ## ExperimentGenerator (auto test-case generation)
 

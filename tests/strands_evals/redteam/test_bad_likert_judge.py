@@ -4,18 +4,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from strands_evals.experimental.redteam import BadLikertJudgeStrategy as ExportedFromRedteam
-from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies import (
+from strands_evals.redteam import BadLikertJudgeStrategy as ExportedFromRedteam
+from strands_evals.redteam.case import RedTeamCase
+from strands_evals.redteam.strategies import (
     BUILTIN_STRATEGIES,
     BadLikertJudgeStrategy,
 )
-from strands_evals.experimental.redteam.strategies.bad_likert_judge import _success_score
-from strands_evals.experimental.redteam.strategies.bad_likert_judge import bad_likert_judge_v0 as blj_v0
-from strands_evals.experimental.redteam.strategies.base import AttackRunResult
-from strands_evals.experimental.redteam.types import RISK_CATEGORIES, AttackGoal, RedTeamConfig
+from strands_evals.redteam.strategies.bad_likert_judge import _success_score
+from strands_evals.redteam.strategies.bad_likert_judge import bad_likert_judge_v0 as blj_v0
+from strands_evals.redteam.strategies.base import AttackRunResult
+from strands_evals.redteam.types import RISK_CATEGORIES, AttackGoal, RedTeamConfig
 
-_BLJ = "strands_evals.experimental.redteam.strategies.bad_likert_judge"
+_BLJ = "strands_evals.redteam.strategies.bad_likert_judge"
 
 
 class _FakeSession:

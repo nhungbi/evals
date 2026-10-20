@@ -8,9 +8,9 @@ from pydantic import BaseModel, Field
 from strands import Agent
 from strands.models.model import Model
 
-from ....evaluators.evaluator import Evaluator
-from ....types.evaluation import NOT_APPLICABLE, EvaluationData, EvaluationOutput, InputT, OutputT
-from ....types.trace import EvaluationLevel
+from ...evaluators.evaluator import Evaluator
+from ...types.evaluation import NOT_APPLICABLE, EvaluationData, EvaluationOutput, InputT, OutputT
+from ...types.trace import EvaluationLevel
 from ..strategies.base import ATTACKER_REFUSED, _run_results
 from .prompt_templates.attack_success import DEFAULT_VERSION, get_template
 

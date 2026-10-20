@@ -4,18 +4,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from strands_evals.experimental.redteam.case import RedTeamCase
-from strands_evals.experimental.redteam.strategies import CrescendoStrategy, GoatStrategy
-from strands_evals.experimental.redteam.strategies.base import AttackRunResult
-from strands_evals.experimental.redteam.strategies.goat import (
+from strands_evals.redteam.case import RedTeamCase
+from strands_evals.redteam.strategies import CrescendoStrategy, GoatStrategy
+from strands_evals.redteam.strategies.base import AttackRunResult
+from strands_evals.redteam.strategies.goat import (
     _ATTACK_NAMES,
     AttackerTurn,
     gen_attacker_turn,
     success_score,
 )
-from strands_evals.experimental.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.redteam.types import AttackGoal, RedTeamConfig
 
-_GOAT = "strands_evals.experimental.redteam.strategies.goat"
+_GOAT = "strands_evals.redteam.strategies.goat"
 
 
 class _FakeSession:

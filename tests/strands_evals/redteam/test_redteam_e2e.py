@@ -8,18 +8,18 @@ and the AttackSuccessEvaluator's judge agent); all the wiring is real.
 
 from unittest.mock import MagicMock, patch
 
-from strands_evals.experimental.redteam import (
+from strands_evals.redteam import (
     AdversarialCaseGenerator,
     CrescendoStrategy,
     RedTeamCase,
     RedTeamExperiment,
     RedTeamReport,
 )
-from strands_evals.experimental.redteam.generators.adversarial import AttackCase, AttackCases
-from strands_evals.experimental.redteam.strategies.target_session import TargetCheckpoint
-from strands_evals.experimental.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.redteam.generators.adversarial import AttackCase, AttackCases
+from strands_evals.redteam.strategies.target_session import TargetCheckpoint
+from strands_evals.redteam.types import AttackGoal, RedTeamConfig
 
-_EVAL = "strands_evals.experimental.redteam.evaluators.attack_success_evaluator.Agent"
+_EVAL = "strands_evals.redteam.evaluators.attack_success_evaluator.Agent"
 
 
 class _FakeSession:
@@ -107,8 +107,8 @@ def test_generated_cases_end_to_end():
     """Path A: generated cases run through the full pipeline."""
     gen = AdversarialCaseGenerator()
     with (
-        patch("strands_evals.experimental.redteam.generators.adversarial.Agent") as gen_agent_cls,
-        patch("strands_evals.experimental.redteam.generators.adversarial._extract_tool_info") as extract,
+        patch("strands_evals.redteam.generators.adversarial.Agent") as gen_agent_cls,
+        patch("strands_evals.redteam.generators.adversarial._extract_tool_info") as extract,
     ):
         gen_agent = MagicMock()
         gen_agent.invoke_async = _async_return(
