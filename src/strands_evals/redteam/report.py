@@ -275,33 +275,44 @@ class RedTeamReport(EvaluationReport):
                 return "BREACH"
             return "ERROR" if all(st == "errored" for st in states) else "ok"
 
+        case_w = _col_width(cases, 24)
+        strategy_w = {s: _col_width([s], 14) for s in strategies}
+
         _console.print("\nAttack matrix (score, * = breached, ! = errored)")
-        _console.print(f"  {'case':<24}" + "".join(f"{s:<14}" for s in strategies) + "worst")
+        _console.print(f"  {'case':<{case_w}}" + "".join(f"{s:<{strategy_w[s]}}" for s in strategies) + "worst")
         for case_name in sorted(cases, key=lambda c: -case_worst(c)):
             cells = ""
             for s in strategies:
                 r = by_cell.get((case_name, s))
                 if r is None:
-                    cells += f"{'-':<14}"
+                    cell = "-"
                 elif r.errored:
-                    cells += f"{'err !':<14}"
+                    cell = "err !"
                 else:
                     mark = " *" if r.state == "breached" else ""
-                    cells += f"{f'{r.score:.2f}{mark}':<14}"
-            _console.print(f"  {case_name:<24}{cells}{case_worst(case_name):.2f} {case_verdict(case_name)}")
+                    cell = f"{r.score:.2f}{mark}"
+                cells += f"{cell:<{strategy_w[s]}}"
+            _console.print(f"  {case_name:<{case_w}}{cells}{case_worst(case_name):.2f} {case_verdict(case_name)}")
 
     def _print_flat(self, results: list[AttackResult]) -> None:
         """Print one row per attack (breached, defended, errored), worst-first."""
+        # show the base case name; the strategy column already disambiguates the
+        # cross-product, and the full "{case}__{strategy}" name would widen the column.
+        case_w = _col_width([_base_case(r) for r in results], 22)
+        risk_w = _col_width([r.risk_category for r in results], 22)
+        strategy_w = _col_width([r.strategy for r in results], 14)
+
         _console.print("\nAll attacks (worst first)")
-        _console.print(f"  {'case':<22}{'risk':<22}{'strategy':<14}{'turns':<7}{'blocked':<9}{'result':<8}score")
+        _console.print(
+            f"  {'case':<{case_w}}{'risk':<{risk_w}}{'strategy':<{strategy_w}}"
+            f"{'turns':<7}{'blocked':<9}{'result':<8}score"
+        )
         for r in results:
             result_label = _result_label(r)
             turns = "" if r.turns_used is None else str(r.turns_used)
             blocked = len(r.pruned_branches) // 2
-            # show the base case name; the strategy column already disambiguates the
-            # cross-product, and the full "{case}__{strategy}" name overflows the column.
             _console.print(
-                f"  {_base_case(r):<22}{r.risk_category:<22}{r.strategy:<14}"
+                f"  {_base_case(r):<{case_w}}{r.risk_category:<{risk_w}}{r.strategy:<{strategy_w}}"
                 f"{turns:<7}{blocked:<9}{result_label:<8}{r.score:.2f}"
             )
 
@@ -361,6 +372,11 @@ def _base_case(result: AttackResult) -> str:
     if result.case_name.endswith(suffix):
         return result.case_name[: -len(suffix)]
     return result.case_name
+
+
+def _col_width(values: list[str], minimum: int) -> int:
+    """Return a column width that fits every value with two spaces of padding, never below `minimum`."""
+    return max([minimum, *(len(v) + 2 for v in values)])
 
 
 def _base_case_is_unique(results: list[AttackResult]) -> bool:

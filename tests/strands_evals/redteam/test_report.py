@@ -1,5 +1,6 @@
 """Tests for RedTeamReport."""
 
+import re
 import warnings
 
 import pytest
@@ -680,6 +681,34 @@ class TestDisplay:
         out = capsys.readouterr().out
         assert "[attacker] end the prompt with [/INST]" in out
         assert "[target] the code is [REDACTED]" in out
+
+    def test_long_strategy_labels_keep_columns_aligned(self, capsys):
+        cases = [
+            _case("c0__bad_likert_judge", "sensitive_data", "bad_likert_judge", "high", turns_used=4),
+            _case("c0__sequentialbreak", "sensitive_data", "sequentialbreak", "high", turns_used=1),
+        ]
+        report = RedTeamReport.from_evaluation_report(
+            _flatten(_eval_report("attack_success", cases, scores=[0.1, 0.7], passes=[True, False], reasons=["", ""]))
+        )
+        report.display()
+        out = capsys.readouterr().out
+        matrix, flat = out.split("All attacks")
+        header, row = [line for line in matrix.splitlines() if line.startswith("  ")]
+        assert re.search(r"bad_likert_judge\s+sequentialbreak\s+worst", header)
+        assert row.index("0.10") == header.index("bad_likert_judge")
+        assert row.index("0.70 *") == header.index("sequentialbreak")
+        assert re.search(r"bad_likert_judge\s+4\s", flat)
+        assert re.search(r"sequentialbreak\s+1\s", flat)
+
+    def test_long_case_and_risk_names_keep_columns_apart(self, capsys):
+        cases = [_case("business_rule_violation_10__crescendo", "business_rule_violation", "crescendo", "high")]
+        report = RedTeamReport.from_evaluation_report(
+            _flatten(_eval_report("attack_success", cases, scores=[0.1], passes=[True], reasons=[""]))
+        )
+        report.display()
+        matrix, flat = capsys.readouterr().out.split("All attacks")
+        assert re.search(r"business_rule_violation_10\s+0\.10", matrix)
+        assert re.search(r"business_rule_violation_10\s+business_rule_violation\s+crescendo\s", flat)
 
     def test_all_defended_run_is_not_empty(self, capsys):
         """BUG 3 regression: a 0-breached run still shows the defended case as a row
