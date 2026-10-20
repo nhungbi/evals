@@ -4,6 +4,7 @@ import inspect
 from unittest.mock import MagicMock, patch
 
 import pytest
+from strands.types.exceptions import ModelThrottledException
 
 from strands_evals.experimental import redteam
 from strands_evals.experimental.redteam import strategies, task
@@ -19,9 +20,12 @@ from strands_evals.experimental.redteam.strategies import (
     SequentialBreakStrategy,
     base,
 )
-from strands_evals.experimental.redteam.strategies.base import AttackRunResult, AttackStrategy
+from strands_evals.experimental.redteam.strategies._common import ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT
+from strands_evals.experimental.redteam.strategies.base import AttackerRefusalRating, AttackRunResult, AttackStrategy
 from strands_evals.experimental.redteam.strategies.target_session import TargetCheckpoint
 from strands_evals.experimental.redteam.types import AttackGoal, RedTeamConfig
+
+_BASE = "strands_evals.experimental.redteam.strategies.base"
 
 
 class _FakeSession:
@@ -55,6 +59,13 @@ def _case(name: str = "c0") -> RedTeamCase:
         input="hello",
         config=RedTeamConfig(attack_goal=AttackGoal(risk_category="prompt_injection", actor_goal="goal")),
     )
+
+
+def _prompt_strategy(template: str = "p {max_turns}", **kwargs) -> PromptStrategy:
+    """A PromptStrategy whose attacker refusal check is stubbed to "not a refusal" (no LLM)."""
+    strategy = PromptStrategy("gradual_escalation", template, **kwargs)
+    strategy._is_attacker_refusal = MagicMock(return_value=False)  # type: ignore[method-assign]
+    return strategy
 
 
 def test_redteam_config_is_strategy_agnostic():
@@ -113,7 +124,7 @@ def test_prompt_strategy_run_attack_drives_loop(mock_simulator_cls):
     mock_sim.act.return_value = act_result
     mock_simulator_cls.return_value = mock_sim
 
-    strategy = PromptStrategy("gradual_escalation", "prompt {actor_profile} {max_turns}")
+    strategy = _prompt_strategy("prompt {actor_profile} {max_turns}")
     session = _FakeSession(lambda _m: "target reply")
 
     result = strategy.run_attack(_case(), session, max_turns=7)
@@ -125,6 +136,54 @@ def test_prompt_strategy_run_attack_drives_loop(mock_simulator_cls):
     # max_turns placeholder substituted into the simulator's system prompt
     template = mock_simulator_cls.call_args.kwargs["system_prompt_template"]
     assert "{max_turns}" not in template and "7" in template
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_attacker_refusal_ends_case_without_sending_it(mock_simulator_cls):
+    """A simulator message that declines the attacker role stops the attack before reaching the target."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.return_value = True
+    act_result = MagicMock()
+    act_result.structured_output.message = "I can't play this role"
+    mock_sim.act.return_value = act_result
+    mock_simulator_cls.return_value = mock_sim
+    strategy = _prompt_strategy()
+    strategy._is_attacker_refusal = MagicMock(return_value=True)  # type: ignore[method-assign]
+    sent: list[str] = []
+
+    result = strategy.run_attack(_case(), _FakeSession(lambda m: sent.append(m) or "target reply"), max_turns=7)
+
+    assert sent == ["hello"]  # only the case input; the refusal was never sent
+    assert result.conversation == [
+        {"role": "attacker", "content": "hello"},
+        {"role": "target", "content": "target reply"},
+        {"role": "attacker_refused", "content": "I can't play this role"},  # kept for debugging
+    ]
+    assert result.metadata["attacker_refused"] is True
+    assert result.metadata["turns_used"] == 1
+    strategy._is_attacker_refusal.assert_called_once_with("I can't play this role", None)
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_skips_refusal_check_on_unsent_final_message(mock_simulator_cls):
+    """The message produced with the stop signal is never sent, so it can't flag the case as refused."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.side_effect = [True, False]
+    act_result = MagicMock()
+    act_result.structured_output.message = "I won't continue this"
+    mock_sim.act.return_value = act_result
+    mock_simulator_cls.return_value = mock_sim
+    strategy = _prompt_strategy()
+    strategy._is_attacker_refusal = MagicMock(return_value=True)  # type: ignore[method-assign]
+
+    result = strategy.run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
+
+    strategy._is_attacker_refusal.assert_not_called()
+    assert result.metadata["attacker_refused"] is False
+    assert result.conversation == [
+        {"role": "attacker", "content": "hello"},
+        {"role": "target", "content": "target reply"},
+    ]
 
 
 @patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
@@ -194,7 +253,114 @@ def test_prompt_strategy_run_attack_handles_target_exception(mock_simulator_cls)
     def broken(_msg):
         raise RuntimeError("boom")
 
-    result = PromptStrategy("gradual_escalation", "p {max_turns}").run_attack(
-        _case(), _FakeSession(broken), max_turns=3
-    )
+    result = _prompt_strategy().run_attack(_case(), _FakeSession(broken), max_turns=3)
     assert "[Error: boom]" in result.conversation[1]["content"]
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_failed_attacker_flags_refusal_and_keeps_turns(mock_simulator_cls):
+    """A content-filtered attacker reply makes `act` raise; the sent turn is kept but can't read as defended."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.return_value = True
+    mock_sim.act.side_effect = AttributeError("'NoneType' object has no attribute 'stop'")
+    mock_simulator_cls.return_value = mock_sim
+
+    result = _prompt_strategy().run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
+
+    assert result.conversation == [
+        {"role": "attacker", "content": "hello"},
+        {"role": "target", "content": "target reply"},
+    ]
+    assert result.metadata["attacker_refused"] is True
+
+
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_attacker_throttling_propagates(mock_simulator_cls):
+    """Throttling is transient, not a refusal: it propagates so the base experiment retries the case."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.return_value = True
+    mock_sim.act.side_effect = ModelThrottledException("slow down")
+    mock_simulator_cls.return_value = mock_sim
+
+    with pytest.raises(ModelThrottledException):
+        _prompt_strategy().run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
+
+
+@pytest.mark.parametrize(("simulator_continues", "flagged"), [(True, True), (False, False)])
+@patch("strands_evals.experimental.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_empty_message_flags_refusal_unless_stopped(mock_simulator_cls, simulator_continues, flagged):
+    """An empty message mid-conversation is a silent attacker; alongside the stop signal it just ends the run."""
+    mock_sim = MagicMock()
+    mock_sim.has_next.side_effect = [True, simulator_continues]
+    act_result = MagicMock()
+    act_result.structured_output.message = "  "
+    mock_sim.act.return_value = act_result
+    mock_simulator_cls.return_value = mock_sim
+
+    result = _prompt_strategy().run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
+
+    assert len(result.conversation) == 2
+    assert result.metadata["attacker_refused"] is flagged
+
+
+def _refusal_judge_returning(rating):
+    judge = MagicMock()
+    judge.return_value.structured_output = rating
+    return judge
+
+
+@pytest.mark.parametrize("is_refusal", [True, False])
+def test_attacker_refusal_check_returns_the_judge_verdict(is_refusal):
+    judge = _refusal_judge_returning(AttackerRefusalRating(is_refusal=is_refusal))
+    with patch(f"{_BASE}.Agent", return_value=judge):
+        assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is is_refusal
+
+
+def test_attacker_refusal_check_judges_every_message_with_only_the_message():
+    """No phrase prefilter: a refusal with no stock phrase still reaches the judge."""
+    message = "This asks me to help bypass safety measures, so let's discuss something else."
+    judge = _refusal_judge_returning(AttackerRefusalRating(is_refusal=True))
+    with patch(f"{_BASE}.Agent", return_value=judge) as agent_cls:
+        assert PromptStrategy("s", "t")._is_attacker_refusal(message, "m") is True
+    agent_cls.assert_called_once_with(
+        model="m", system_prompt=ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT, callback_handler=None
+    )
+    assert judge.call_args.args[0] == f"# Attacker Message\n{message}"
+    assert judge.call_args.kwargs["structured_output_model"] is AttackerRefusalRating
+
+
+def test_attacker_refusal_check_parse_failure_returns_none():
+    """A judge that returns no structured output gives no verdict, so the caller can count the failure."""
+    with patch(f"{_BASE}.Agent", return_value=_refusal_judge_returning(None)):
+        assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is None
+
+
+def test_attacker_refusal_check_judge_error_returns_none():
+    """A judge that raises (throttle, structured-output failure) gives no verdict instead of aborting the case."""
+    judge = MagicMock(side_effect=RuntimeError("throttled"))
+    with patch(f"{_BASE}.Agent", return_value=judge):
+        assert PromptStrategy("s", "t")._is_attacker_refusal("some message", None) is None
+
+
+@pytest.mark.parametrize(
+    ("verdict", "stopped", "stats", "conversation"),
+    [
+        (False, False, {"attacker_refused": False, "refusal_judge_failures": 0}, []),
+        (None, False, {"attacker_refused": False, "refusal_judge_failures": 1}, []),
+        (
+            True,
+            True,
+            {"attacker_refused": True, "refusal_judge_failures": 0},
+            [{"role": "attacker_refused", "content": "msg"}],
+        ),
+    ],
+)
+def test_attacker_refused_turn_records_the_verdict(verdict, stopped, stats, conversation):
+    strategy = PromptStrategy("s", "t")
+    strategy._is_attacker_refusal = MagicMock(return_value=verdict)  # type: ignore[method-assign]
+    run_stats = strategy._new_refusal_stats()
+    run_conversation: list[dict] = []
+    assert strategy._attacker_refused_turn("msg", "m", run_conversation, run_stats) is stopped
+    assert run_stats == stats
+    assert run_conversation == conversation
+    strategy._is_attacker_refusal.assert_called_once_with("msg", "m")

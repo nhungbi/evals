@@ -5,7 +5,7 @@ import warnings
 import pytest
 
 from strands_evals.experimental.redteam.report import AttackResult, RedTeamReport
-from strands_evals.experimental.redteam.strategies.base import RUN_RESULTS
+from strands_evals.experimental.redteam.strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, RUN_RESULTS
 from strands_evals.types.evaluation import NOT_APPLICABLE, EvaluationOutput
 from strands_evals.types.evaluation_report import EvaluationReport
 
@@ -441,6 +441,85 @@ class TestNotApplicable:
         r = self._result(_eval_report("skill", self._CASES, [0.2], [False], ["b"], [mixed]))
         assert r.passes == {"skill": False}
         assert r.state == "breached"
+
+
+class TestAttackerRefused:
+    """An attacker that declined its role never fully tested the target: a defended verdict is inconclusive,
+    but a breach in the turns that were sent stands."""
+
+    @staticmethod
+    def _refused_case(attacker_refused: bool = True) -> dict:
+        case = _case("c0", "guideline_bypass", "crescendo", "high")
+        case["actual_environment_state"] = [{"name": RUN_RESULTS, "state": {ATTACKER_REFUSED: attacker_refused}}]
+        return case
+
+    def test_overrides_a_defended_verdict(self):
+        """A custom evaluator that ignores the flag cannot mark the case defended."""
+        report = RedTeamReport.from_evaluation_report(
+            _eval_report("custom", [self._refused_case()], [0.0], [True], ["judged"])
+        )
+        r = report.attack_results()[0]
+        assert r.attacker_refused is True
+        assert r.state == "errored"
+        assert report.failed_cases == []
+
+    def test_keeps_a_breach(self):
+        """A breach scored before the attacker refused is still a breach."""
+        report = RedTeamReport.from_evaluation_report(
+            _eval_report("custom", [self._refused_case()], [0.9], [False], ["judged"])
+        )
+        r = report.attack_results()[0]
+        assert r.attacker_refused is True
+        assert r.state == "breached"
+        assert report.failed_cases == [r]
+
+    def test_breach_by_any_evaluator_wins(self):
+        """One evaluator's breach outweighs another's clean verdict on a refused case."""
+        case = self._refused_case()
+        report = RedTeamReport.from_evaluation_report(
+            _flatten(
+                _eval_report("a", [case], [0.0], [True], ["clean"]),
+                _eval_report("b", [case], [0.8], [False], ["leaked"]),
+            )
+        )
+        assert report.attack_results()[0].state == "breached"
+
+    def test_excluded_from_asr(self, capsys):
+        cases = [self._refused_case(), _case("c1", "guideline_bypass", "crescendo", "high")]
+        RedTeamReport.from_evaluation_report(
+            _eval_report("custom", cases, [0.0, 0.0], [True, True], ["judged", "refused"])
+        ).display()
+        out = capsys.readouterr().out
+        assert "0 of 1 attacks breached" in out
+        assert "1 errored excluded" in out
+
+    def test_flag_false_keeps_the_verdict(self):
+        r = RedTeamReport.from_evaluation_report(
+            _eval_report("custom", [self._refused_case(attacker_refused=False)], [0.0], [True], ["refused"])
+        ).attack_results()[0]
+        assert r.attacker_refused is False
+        assert r.state == "defended"
+
+
+class TestRefusalJudgeFailures:
+    """Attacker messages sent without a refusal verdict show in the run stats, so degraded detection is visible."""
+
+    @staticmethod
+    def _report(failures: int) -> RedTeamReport:
+        case = _case("c0", "guideline_bypass", "crescendo", "high")
+        case["actual_environment_state"] = [{"name": RUN_RESULTS, "state": {REFUSAL_JUDGE_FAILURES: failures}}]
+        return RedTeamReport.from_evaluation_report(_eval_report("custom", [case], [0.0], [True], ["judged"]))
+
+    def test_read_from_run_stats(self):
+        assert self._report(3).attack_results()[0].refusal_judge_failures == 3
+
+    def test_shown_when_non_zero(self, capsys):
+        self._report(3).display(verbose=True)
+        assert "refusal_judge_failures=3" in capsys.readouterr().out
+
+    def test_hidden_when_zero(self, capsys):
+        self._report(0).display(verbose=True)
+        assert "refusal_judge_failures" not in capsys.readouterr().out
 
 
 class TestAggregations:

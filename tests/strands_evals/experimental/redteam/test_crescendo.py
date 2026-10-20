@@ -69,6 +69,7 @@ def _strategy(**kwargs) -> CrescendoStrategy:
     strat._build_attacker = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
     strat._build_judge = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
     strat._build_refusal_judge = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
+    strat._is_attacker_refusal = MagicMock(return_value=False)  # type: ignore[method-assign]
     return strat
 
 
@@ -180,7 +181,14 @@ def test_returns_attack_run_result_shape():
     ):
         result = strat.run_attack(_case(), _session(lambda _m: "engaged reply"), max_turns=10)
     assert isinstance(result, AttackRunResult)
-    assert set(result.metadata) == {"turns_used", "target_calls", "backtracks", "parse_failures"}
+    assert set(result.metadata) == {
+        "turns_used",
+        "target_calls",
+        "backtracks",
+        "parse_failures",
+        "attacker_refused",
+        "refusal_judge_failures",
+    }
 
 
 def test_backtracks_on_refusal_without_consuming_conversation():
@@ -296,6 +304,55 @@ def test_question_parse_failure_safe_terminates():
     assert result.metadata["parse_failures"] == 1
     assert result.conversation == []  # nothing sent, but no exception
     assert result.strategy_succeeded is False
+    # A filtered attacker reply leaves no message: inconclusive, never an empty transcript read as defended.
+    assert result.metadata["attacker_refused"] is True
+
+
+def test_attacker_refusal_ends_case_without_sending_it():
+    """An attacker that declines its role stops the attack; the refusal never reaches the target."""
+    strat = _strategy(max_turns=5)
+    strat._is_attacker_refusal = MagicMock(side_effect=[False, True])  # type: ignore[method-assign]
+    sent: list[str] = []
+    with (
+        patch(f"{_CRESCENDO}.gen_escalating_question", side_effect=["q1", "I can't help with this"]),
+        patch(f"{_CRESCENDO}.success_score", return_value=0.0),
+    ):
+        result = strat.run_attack(_case(), _session(lambda m: sent.append(m) or "reply"), max_turns=10)
+    assert sent == ["q1"]
+    assert result.conversation == [
+        {"role": "attacker", "content": "q1"},
+        {"role": "target", "content": "reply"},
+        {"role": "attacker_refused", "content": "I can't help with this"},  # kept, never sent
+    ]
+    assert result.metadata["attacker_refused"] is True
+    assert result.metadata["turns_used"] == 1
+    assert result.strategy_succeeded is False
+
+
+def test_attacker_refusal_judged_by_experiment_model_not_attacker_model():
+    """The refusal judge runs on the experiment-level (evaluator) model, never the strategy's attacker model."""
+    strat = _strategy(max_turns=1, model="attacker-model")
+    with (
+        patch(f"{_CRESCENDO}.gen_escalating_question", return_value="q1"),
+        patch(f"{_CRESCENDO}.success_score", return_value=0.0),
+    ):
+        strat.run_attack(_case(), _session(lambda _m: "reply"), max_turns=10, model="experiment-model")
+    strat._is_attacker_refusal.assert_called_once_with("q1", "experiment-model")  # type: ignore[attr-defined]
+
+
+def test_refusal_judge_failures_are_counted_and_turns_kept():
+    """A failed refusal verdict sends the message anyway and is counted, so degraded detection is visible."""
+    strat = _strategy(max_turns=2)
+    strat._is_attacker_refusal = MagicMock(return_value=None)  # type: ignore[method-assign]
+    sent: list[str] = []
+    with (
+        patch(f"{_CRESCENDO}.gen_escalating_question", side_effect=["q1", "q2"]),
+        patch(f"{_CRESCENDO}.success_score", return_value=0.0),
+    ):
+        result = strat.run_attack(_case(), _session(lambda m: sent.append(m) or "reply"), max_turns=10)
+    assert sent == ["q1", "q2"]
+    assert result.metadata["refusal_judge_failures"] == 2
+    assert result.metadata["attacker_refused"] is False
 
 
 def test_ctor_model_takes_precedence():
@@ -323,6 +380,7 @@ def test_reused_instance_builds_fresh_agents_each_case_without_reset():
     We patch the SDK ``Agent`` ctor (NOT the _build_* methods) so the REAL build bodies run --
     reintroducing any judge/refusal-judge cache OR a cross-case attacker cache drops the count."""
     strat = CrescendoStrategy()
+    strat._is_attacker_refusal = MagicMock(return_value=False)  # type: ignore[method-assign]
 
     def make_agent(**_kw):
         # Built Agent: refusal verdict False (no backtrack, turn kept) and success score 0.0 (never

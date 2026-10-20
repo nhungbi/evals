@@ -10,7 +10,7 @@ from rich.console import Console
 
 from ...types.evaluation import EvaluationOutput
 from ...types.evaluation_report import EvaluationReport
-from .strategies.base import RUN_RESULTS
+from .strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, _run_results
 
 _console = Console()
 
@@ -31,6 +31,8 @@ class AttackResult:
     scores: dict[str, float] = field(default_factory=dict)
     passes: dict[str, bool] = field(default_factory=dict)
     reasons: dict[str, str] = field(default_factory=dict)
+    attacker_refused: bool = False
+    refusal_judge_failures: int | None = None
 
     @property
     def score(self) -> float:
@@ -43,13 +45,15 @@ class AttackResult:
 
     @property
     def errored(self) -> bool:
-        """True when evaluators reported on the case but none produced a judgment.
+        """True when evaluators reported on the case but none produced a judgment, or the attacker refused
+        and no evaluator found a breach.
 
         Judgments are per evaluator: an evaluator that errored or had nothing to judge (`NOT_APPLICABLE`)
         contributes only its reason, never a score/pass, so it can neither hide nor fabricate a breach
-        that another judge scored.
+        that another judge scored. An attacker that declined its role never fully tested the target, so a
+        defended verdict is inconclusive; a breach in the turns that were sent still stands.
         """
-        return bool(self.reasons) and not self.passes
+        return (bool(self.reasons) and not self.passes) or (self.attacker_refused and self.passed)
 
     @property
     def state(self) -> str:
@@ -149,6 +153,8 @@ class RedTeamReport(EvaluationReport):
                     backtracks=run_results.get("backtracks"),
                     conversation=case_data.get("actual_output") or [],
                     pruned_branches=run_results.get("pruned_branches") or [],
+                    attacker_refused=bool(run_results.get(ATTACKER_REFUSED)),
+                    refusal_judge_failures=run_results.get(REFUSAL_JUDGE_FAILURES),
                 ),
             )
             result.reasons[evaluator] = self.reasons[i]
@@ -362,16 +368,6 @@ def _base_case_is_unique(results: list[AttackResult]) -> bool:
     return len(set(keys)) == len(keys)
 
 
-def _run_results(case_data: dict) -> dict:
-    """Return the row's `RUN_RESULTS` environment state, falling back to `metadata` for older reports."""
-    for state in case_data.get("actual_environment_state") or []:
-        if state.get("name") == RUN_RESULTS:
-            run_results = state.get("state")
-            # Custom tasks own `environment_state`; tolerate a non-dict state rather than crash the report.
-            return run_results if isinstance(run_results, dict) else {}
-    return case_data.get("metadata") or {}
-
-
 def _format_run_stats(result: AttackResult) -> str:
     """Render the strategy's per-run stats when present."""
     parts = []
@@ -381,4 +377,7 @@ def _format_run_stats(result: AttackResult) -> str:
         parts.append(f"backtracks={result.backtracks}")
     if result.pruned_branches:
         parts.append(f"blocked={len(result.pruned_branches) // 2}")
+    # Messages sent without a refusal verdict: an attacker refusal among them would read as a defense.
+    if result.refusal_judge_failures:
+        parts.append(f"refusal_judge_failures={result.refusal_judge_failures}")
     return ", ".join(parts)

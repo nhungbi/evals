@@ -17,7 +17,7 @@ from strands import Agent
 from strands.models.model import Model
 
 from ...utils import _put_model_field
-from ..base import MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
+from ..base import ATTACKER_REFUSED, MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 from . import goat_v0
 
 if TYPE_CHECKING:
@@ -164,12 +164,17 @@ class GoatStrategy(AttackStrategy):
         target_calls = 0
         score: float | None = None
         succeeded = False
+        refusal_stats = self._new_refusal_stats()
 
         for turn_index in range(turn_cap):
             turn = gen_attacker_turn(attacker, goal, last_reply, last_response, first_turn=(turn_index == 0))
             if turn is None or not turn.reply.strip():
                 parse_failures += 1
+                refusal_stats[ATTACKER_REFUSED] = True
                 logger.warning("reason=<parse_failure> | attacker produced no reply | ending case early")
+                break
+            # Judged by the experiment-level model, never the attacker's own.
+            if self._attacker_refused_turn(turn.reply, model, conversation, refusal_stats):
                 break
 
             reply = turn.reply
@@ -207,6 +212,7 @@ class GoatStrategy(AttackStrategy):
                 "target_calls": target_calls,
                 "parse_failures": parse_failures,
                 "attacks_used": attacks_used,
+                **refusal_stats,
                 **({"reasoning_trace": reasoning_trace} if self._store_reasoning else {}),
             },
         )

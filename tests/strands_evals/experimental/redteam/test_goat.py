@@ -81,6 +81,7 @@ def _strategy(**kwargs) -> GoatStrategy:
     strat = GoatStrategy(**kwargs)
     strat._build_attacker = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
     strat._build_judge = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
+    strat._is_attacker_refusal = MagicMock(return_value=False)  # type: ignore[method-assign]
     return strat
 
 
@@ -232,6 +233,8 @@ def test_returns_attack_run_result_shape():
         "target_calls": 1,
         "parse_failures": 0,
         "attacks_used": ["hypothetical"],  # _turn default attack
+        "attacker_refused": False,
+        "refusal_judge_failures": 0,
     }
 
 
@@ -262,6 +265,8 @@ def test_runs_to_cap_when_never_succeeds():
         "target_calls": 3,  # ctor max_turns wins (smaller)
         "parse_failures": 0,
         "attacks_used": ["hypothetical", "hypothetical", "hypothetical"],
+        "attacker_refused": False,
+        "refusal_judge_failures": 0,
     }
 
 
@@ -286,6 +291,25 @@ def test_parse_failure_ends_early():
     )
     assert result.metadata["parse_failures"] == 1
     assert result.metadata["target_calls"] == 1  # only the first turn reached the target
+    # A filtered attacker reply leaves no message; the sent turn is kept but can't read as defended.
+    assert result.metadata["attacker_refused"] is True
+    assert len(result.conversation) == 2
+
+
+def test_attacker_refusal_ends_case_without_sending_it():
+    """An attacker that declines its role stops the attack; the refusal never reaches the target."""
+    strat = _strategy()
+    strat._is_attacker_refusal = MagicMock(side_effect=[False, True])  # type: ignore[method-assign]
+    session = _FakeSession(lambda m: "resp")
+    result = _run(strat, _case(), session, turns=[_turn(reply="r1"), _turn(reply="I won't do this")])
+    assert session.sent == ["r1"]
+    assert result.conversation == [
+        {"role": "attacker", "content": "r1"},
+        {"role": "target", "content": "resp"},
+        {"role": "attacker_refused", "content": "I won't do this"},  # kept, never sent
+    ]
+    assert result.metadata["attacker_refused"] is True
+    assert result.metadata["turns_used"] == 1
 
 
 def test_empty_reply_ends_early_without_invoking():
@@ -293,6 +317,7 @@ def test_empty_reply_ends_early_without_invoking():
     result = _run(_strategy(), _case(), session, turns=[_turn(reply="   ")])
     assert session.sent == []  # never invoke("")
     assert result.metadata["parse_failures"] == 1
+    assert result.metadata["attacker_refused"] is True
 
 
 def test_empty_target_response_ends_early():
@@ -308,6 +333,8 @@ def test_empty_target_response_ends_early():
         "target_calls": 1,
         "parse_failures": 0,
         "attacks_used": [],
+        "attacker_refused": False,
+        "refusal_judge_failures": 0,
         "reasoning_trace": [],
     }
 
@@ -324,6 +351,8 @@ def test_first_turn_breach_records_pair_and_attacks():
         "target_calls": 1,
         "parse_failures": 0,
         "attacks_used": ["hypothetical"],
+        "attacker_refused": False,
+        "refusal_judge_failures": 0,
         "reasoning_trace": [{"observation": "o1", "thought": "t1", "strategy": "s1"}],
     }
 
@@ -384,6 +413,7 @@ def test_reused_instance_builds_fresh_agents_each_case_without_reset():
     the SDK ``Agent`` ctor (NOT the _build_* methods) so the REAL build bodies run -- reintroducing
     any instance/per-case judge cache OR a cross-case attacker cache drops the count and fails."""
     strat = GoatStrategy()
+    strat._is_attacker_refusal = MagicMock(return_value=False)  # type: ignore[method-assign]
 
     def make_agent(**_kw):
         # Each built Agent, when invoked, scores 0.0 (so success_score never early-stops and every

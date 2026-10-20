@@ -70,6 +70,7 @@ def _stub_crescendo() -> CrescendoStrategy:
     strat._build_attacker = MagicMock(return_value=attacker)  # type: ignore[method-assign]
     strat._build_judge = MagicMock(return_value=judge)  # type: ignore[method-assign]
     strat._build_refusal_judge = MagicMock(return_value=refusal_judge)  # type: ignore[method-assign]
+    strat._is_attacker_refusal = MagicMock(return_value=False)  # type: ignore[method-assign]
     return strat
 
 
