@@ -428,7 +428,7 @@ Cases are typed `RedTeamCase` carrying a `RedTeamConfig(attack_goal=AttackGoal(r
 
 **Hard turn cap:** the built-in task passes `MAX_ALLOWED_TURNS = 50` (`strategies/base.py`) regardless of a strategy's own `max_turns`, and `run_attack`'s `max_turns` defaults to it. A `CrescendoStrategy(max_turns=100)` will still stop at 50 inside `RedTeamExperiment`. Lower turn budgets honor the strategy setting.
 
-Stability: breaking changes to `strands_evals.redteam` (renames, removed args, changed defaults) go through a deprecation cycle with a `DeprecationWarning` for at least one minor version. The old `strands_evals.experimental.redteam` import path still works but is deprecated.
+Stability: breaking changes to `strands_evals.redteam` (renames, removed args, changed defaults) go through a deprecation cycle with a `DeprecationWarning` for at least one minor version.
 
 ## ExperimentGenerator (auto test-case generation)
 

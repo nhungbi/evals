@@ -2,8 +2,6 @@
 
 Adversarial safety testing for Strands agents. Red teaming runs attack strategies drawn from published jailbreak research against an agent and scores whether each attack succeeded — probing what the agent does under hostile input (prompt injection, data exfiltration, excessive tool use, privilege escalation) rather than how well it performs on cooperative input.
 
-> **Moved.** This module used to live under `strands_evals.experimental.redteam`. That import path still works but emits a `DeprecationWarning`; import from `strands_evals.redteam` instead.
-
 ## How it works
 
 An [`AttackStrategy`](strategies/base.py) drives an adversarial conversation against the target through a [`TargetSession`](strategies/target_session.py), and an [`AttackSuccessEvaluator`](evaluators/attack_success_evaluator.py) (LLM-as-a-judge) scores the resulting conversation on a continuous `0.0`–`1.0` scale. You assemble cases, strategies, and the target agent into a [`RedTeamExperiment`](experiment.py), run it, and read the breaches off a [`RedTeamReport`](report.py).
