@@ -1237,10 +1237,38 @@ def testis_throttling_error_detects_model_throttled_exception():
     assert is_throttling_error(exc) is True
 
 
-def testis_throttling_error_detects_event_loop_exception():
-    """Test that EventLoopException is detected as throttling error"""
-    exc = EventLoopException(Exception("Throttling"), {})
+def testis_throttling_error_detects_event_loop_exception_wrapping_model_throttled():
+    """Test that EventLoopException wrapping ModelThrottledException is detected as throttling error"""
+    exc = EventLoopException(ModelThrottledException("Too many tokens"), {})
     assert is_throttling_error(exc) is True
+
+
+def testis_throttling_error_detects_event_loop_exception_wrapping_botocore_throttling():
+    """Test that EventLoopException wrapping a botocore throttling error is detected"""
+
+    class ThrottlingException(Exception):
+        pass
+
+    exc = EventLoopException(ThrottlingException("Rate limit exceeded"), {})
+    assert is_throttling_error(exc) is True
+
+    client_error = ClientError({"Error": {"Code": "ThrottlingException", "Message": "Test"}}, "TestOperation")
+    assert is_throttling_error(EventLoopException(client_error, {})) is True
+
+
+def testis_throttling_error_ignores_event_loop_exception_wrapping_non_throttling():
+    """Test that EventLoopException wrapping a non-throttling error is not detected"""
+    exc = EventLoopException(ValueError("not throttling"), {})
+    assert is_throttling_error(exc) is False
+
+
+def testis_throttling_error_judges_nested_event_loop_exception_by_innermost_cause():
+    """Test that nested EventLoopExceptions are judged by the innermost cause"""
+    throttled = EventLoopException(EventLoopException(ModelThrottledException("Too many tokens"), {}), {})
+    assert is_throttling_error(throttled) is True
+
+    not_throttled = EventLoopException(EventLoopException(ValueError("not throttling"), {}), {})
+    assert is_throttling_error(not_throttled) is False
 
 
 def testis_throttling_error_detects_botocore_throttling():
@@ -1354,6 +1382,28 @@ def test_experiment_run_evaluations_no_retry_on_non_throttling():
     assert call_count == 1
     assert report.scores[0] == 0
     assert "Invalid input" in report.reasons[0]
+
+
+def test_experiment_run_evaluations_no_retry_on_event_loop_exception_non_throttling():
+    """Test that run_evaluations doesn't retry an EventLoopException wrapping a non-throttling error"""
+    call_count = 0
+
+    def event_loop_error_task(c):
+        nonlocal call_count
+        call_count += 1
+        raise EventLoopException(ValueError("not throttling"), {})
+
+    case = Case(name="test", input="hello", expected_output="hello")
+    experiment = Experiment(cases=[case], evaluators=[MockEvaluator()])
+
+    with patch("strands_evals.experiment._INITIAL_RETRY_DELAY", 0.01):
+        with patch("strands_evals.experiment._MAX_RETRY_DELAY", 0.02):
+            report = experiment.run_evaluations(event_loop_error_task)
+
+    assert call_count == 1
+    assert report.scores[0] == 0
+    assert report.test_passes[0] is False
+    assert "not throttling" in report.reasons[0]
 
 
 def test_experiment_run_evaluations_exponential_backoff():
