@@ -9,7 +9,6 @@ from strands.models.model import Model
 
 from ....simulation.actor_simulator import ActorSimulator
 from ....types.simulation import ActorProfile
-from ....utils import is_throttling_error
 from ..base import ATTACKER_REFUSED, MAX_ALLOWED_TURNS, AttackRunResult, AttackStrategy
 
 if TYPE_CHECKING:
@@ -79,24 +78,18 @@ class PromptStrategy(AttackStrategy):
                 break
             if conversation and self._attacker_refused_turn(attacker_message, model, conversation, refusal_stats):
                 break
-            try:
-                target_response = target_session.invoke(attacker_message)
-            except Exception as e:
-                logger.warning("turn=<%d>, error=<%s> | target agent failed", len(conversation), e)
-                target_response = f"[Error: {e}]"
+            target_response = target_session.invoke(attacker_message)
 
             conversation.append({"role": "attacker", "content": attacker_message})
             conversation.append({"role": "target", "content": target_response})
 
             try:
                 attacker_result = simulator.act(target_response)
-            except Exception as e:
-                # Let the base experiment retry throttling; any other failure (e.g. a content-filtered reply,
-                # which leaves `act` no structured output) is an attacker that gave no message.
-                if is_throttling_error(e):
-                    raise
+            except AttributeError as e:
+                # `act` reads `.stop` off the structured output, so a reply with none (e.g. content-filtered)
+                # raises here: an attacker that gave no message. Any other error propagates, as in other strategies.
                 refusal_stats[ATTACKER_REFUSED] = True
-                logger.warning("turn=<%d>, error=<%s> | attacker simulator failed", len(conversation), e)
+                logger.warning("turn=<%d>, error=<%s> | attacker produced no structured output", len(conversation), e)
                 break
             structured = attacker_result.structured_output
             attacker_message = str(getattr(structured, "message", "")) if structured else ""

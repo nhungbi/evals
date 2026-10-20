@@ -245,7 +245,8 @@ def test_run_attack_explicit_max_turns_above_ceiling_is_honored(mock_simulator_c
 
 
 @patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
-def test_prompt_strategy_run_attack_handles_target_exception(mock_simulator_cls):
+def test_prompt_strategy_target_exception_propagates(mock_simulator_cls):
+    """A target error propagates so the experiment records the case as errored, not as a defended turn."""
     mock_sim = MagicMock()
     mock_sim.has_next.side_effect = [True, False]
     mock_simulator_cls.return_value = mock_sim
@@ -253,8 +254,8 @@ def test_prompt_strategy_run_attack_handles_target_exception(mock_simulator_cls)
     def broken(_msg):
         raise RuntimeError("boom")
 
-    result = _prompt_strategy().run_attack(_case(), _FakeSession(broken), max_turns=3)
-    assert "[Error: boom]" in result.conversation[1]["content"]
+    with pytest.raises(RuntimeError, match="boom"):
+        _prompt_strategy().run_attack(_case(), _FakeSession(broken), max_turns=3)
 
 
 @patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
@@ -274,15 +275,21 @@ def test_prompt_strategy_failed_attacker_flags_refusal_and_keeps_turns(mock_simu
     assert result.metadata["attacker_refused"] is True
 
 
+@pytest.mark.parametrize(
+    "error",
+    [ModelThrottledException("slow down"), RuntimeError("model rejected forced tool choice")],
+    ids=["throttling", "other"],
+)
 @patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
-def test_prompt_strategy_attacker_throttling_propagates(mock_simulator_cls):
-    """Throttling is transient, not a refusal: it propagates so the base experiment retries the case."""
+def test_prompt_strategy_attacker_exception_propagates(mock_simulator_cls, error):
+    """Only a missing structured output reads as a refusal; any other attacker error propagates, so the base
+    experiment retries throttling and records the rest as errored."""
     mock_sim = MagicMock()
     mock_sim.has_next.return_value = True
-    mock_sim.act.side_effect = ModelThrottledException("slow down")
+    mock_sim.act.side_effect = error
     mock_simulator_cls.return_value = mock_sim
 
-    with pytest.raises(ModelThrottledException):
+    with pytest.raises(type(error)):
         _prompt_strategy().run_attack(_case(), _FakeSession(lambda _m: "target reply"), max_turns=7)
 
 

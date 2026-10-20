@@ -1,6 +1,7 @@
 """Tests for RedTeamExperiment."""
 
 import warnings
+from unittest.mock import patch
 
 import pytest
 from strands.models.model import Model
@@ -752,3 +753,27 @@ def test_overall_score_excludes_errored_attacks():
 
     assert [r.state for r in report.attack_results()] == ["breached", "errored"]
     assert report.overall_score == 1.0
+
+
+class _DownSession(_FakeSession):
+    """A target that is down: every turn raises."""
+
+    def invoke(self, _message):
+        raise RuntimeError("target down")
+
+
+@patch("strands_evals.redteam.strategies.prompt_strategy.ActorSimulator")
+def test_prompt_strategy_target_failure_is_errored_not_defended(mock_simulator_cls):
+    """A failing target errors the attack and drops it from ASR instead of reading as a defense."""
+    mock_simulator_cls.return_value.has_next.side_effect = [True, False]
+
+    exp = RedTeamExperiment(
+        cases=[_case()],
+        attack_strategies=[PromptStrategy("gradual_escalation", "p {max_turns}", max_turns=4)],
+        evaluators=[_PassEvaluator()],
+    )
+    report = exp.run_evaluations(agent_factory=_DownSession)
+
+    (result,) = report.attack_results()
+    assert result.state == "errored"
+    assert "target down" in result.reason
