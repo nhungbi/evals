@@ -11,7 +11,7 @@ from strands_evals.redteam.strategies.crescendo import (
     success_score,
 )
 from strands_evals.redteam.strategies.target_session import TargetCheckpoint
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
 _CRESCENDO = "strands_evals.redteam.strategies.crescendo"
 

@@ -21,8 +21,8 @@ from ..base import ATTACKER_REFUSED, MAX_ALLOWED_TURNS, AttackRunResult, AttackS
 from . import goat_v0
 
 if TYPE_CHECKING:
+    from ....types.redteam import AttackGoal
     from ...case import RedTeamCase
-    from ...types import AttackGoal
     from ..target_session import TargetSession
 
 logger = logging.getLogger(__name__)

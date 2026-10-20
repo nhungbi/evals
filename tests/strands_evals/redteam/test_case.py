@@ -6,7 +6,7 @@ import pytest
 
 from strands_evals.redteam.case import RedTeamCase
 from strands_evals.redteam.strategies.base import AttackRunResult, AttackStrategy
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
 
 class _StubStrategy(AttackStrategy):

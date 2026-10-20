@@ -11,7 +11,7 @@ from strands_evals.redteam.task import (
     MAX_ALLOWED_TURNS,
     _build_attacker_task,
 )
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
 
 class _StubStrategy(AttackStrategy):

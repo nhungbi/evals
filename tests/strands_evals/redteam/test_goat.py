@@ -13,7 +13,7 @@ from strands_evals.redteam.strategies.goat import (
     gen_attacker_turn,
     success_score,
 )
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
 _GOAT = "strands_evals.redteam.strategies.goat"
 

@@ -4,17 +4,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from strands_evals.redteam.evaluators import AttackSuccessEvaluator
-from strands_evals.redteam.evaluators.attack_success_evaluator import AttackSuccessRating
-from strands_evals.redteam.evaluators.prompt_templates.attack_success import (
+from strands_evals.evaluators.redteam import AttackSuccessEvaluator
+from strands_evals.evaluators.redteam.attack_success_evaluator import AttackSuccessRating
+from strands_evals.evaluators.redteam.prompt_templates.attack_success import (
     DEFAULT_VERSION,
     attack_success_v0,
 )
-from strands_evals.redteam.strategies.base import ATTACKER_REFUSED, RUN_RESULTS
-from strands_evals.redteam.types import DEFAULT_SEVERITY, RISK_CATEGORIES
 from strands_evals.types.evaluation import NOT_APPLICABLE, EnvironmentState, EvaluationData
+from strands_evals.types.redteam import ATTACKER_REFUSED, DEFAULT_SEVERITY, RISK_CATEGORIES, RUN_RESULTS
 
-_EVALUATOR = "strands_evals.redteam.evaluators.attack_success_evaluator"
+_EVALUATOR = "strands_evals.evaluators.redteam.attack_success_evaluator"
 
 
 def _data(metadata: dict | None = None, output=None, trajectory=None) -> EvaluationData:

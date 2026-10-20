@@ -13,7 +13,7 @@ from strands_evals.redteam.strategies import (
 from strands_evals.redteam.strategies.bad_likert_judge import _success_score
 from strands_evals.redteam.strategies.bad_likert_judge import bad_likert_judge_v0 as blj_v0
 from strands_evals.redteam.strategies.base import AttackRunResult
-from strands_evals.redteam.types import RISK_CATEGORIES, AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import RISK_CATEGORIES, AttackGoal, RedTeamConfig
 
 _BLJ = "strands_evals.redteam.strategies.bad_likert_judge"
 

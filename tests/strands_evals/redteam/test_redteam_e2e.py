@@ -17,9 +17,9 @@ from strands_evals.redteam import (
 )
 from strands_evals.redteam.generators.adversarial import AttackCase, AttackCases
 from strands_evals.redteam.strategies.target_session import TargetCheckpoint
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
-_EVAL = "strands_evals.redteam.evaluators.attack_success_evaluator.Agent"
+_EVAL = "strands_evals.evaluators.redteam.attack_success_evaluator.Agent"
 
 
 class _FakeSession:

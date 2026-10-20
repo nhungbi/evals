@@ -5,8 +5,8 @@ import warnings
 import pytest
 
 from strands_evals.redteam.case import RedTeamCase
-from strands_evals.redteam.types import RISK_CATEGORIES, AttackGoal, RedTeamConfig
-from strands_evals.redteam.types.risk_category import DEPRECATED_RISK_CATEGORIES
+from strands_evals.types.redteam import RISK_CATEGORIES, AttackGoal, RedTeamConfig
+from strands_evals.types.redteam.risk_category import DEPRECATED_RISK_CATEGORIES
 
 
 def test_deprecated_aliases_point_at_current_categories():

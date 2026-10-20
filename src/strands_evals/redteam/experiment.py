@@ -18,10 +18,10 @@ from strands.multiagent.base import MultiAgentBase
 from ..case import Case
 from ..evaluation_data_store import EvaluationDataStore
 from ..evaluators.evaluator import Evaluator
+from ..evaluators.redteam import AttackSuccessEvaluator
 from ..experiment import Experiment
 from ..types import InputT, OutputT
 from .case import RedTeamCase
-from .evaluators import AttackSuccessEvaluator
 from .report import RedTeamReport
 from .strategies import AttackStrategy
 from .strategies.target_session import TargetSession

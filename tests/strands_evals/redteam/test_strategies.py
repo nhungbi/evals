@@ -23,7 +23,7 @@ from strands_evals.redteam.strategies import (
 from strands_evals.redteam.strategies._common import ATTACKER_REFUSAL_JUDGE_SYSTEM_PROMPT
 from strands_evals.redteam.strategies.base import AttackerRefusalRating, AttackRunResult, AttackStrategy
 from strands_evals.redteam.strategies.target_session import TargetCheckpoint
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
 _BASE = "strands_evals.redteam.strategies.base"
 

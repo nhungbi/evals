@@ -11,9 +11,9 @@ from pydantic import BaseModel, Field
 from strands import Agent
 from strands.models.model import Model
 
+from ...types.redteam import DEFAULT_SEVERITY, RISK_CATEGORIES, AttackGoal, RedTeamConfig
+from ...types.redteam.risk_category import resolve_risk_category
 from ..case import RedTeamCase
-from ..types import DEFAULT_SEVERITY, RISK_CATEGORIES, AttackGoal, RedTeamConfig
-from ..types.risk_category import resolve_risk_category
 from .prompt_templates import get_template as _get_prompt_template
 
 logger = logging.getLogger(__name__)

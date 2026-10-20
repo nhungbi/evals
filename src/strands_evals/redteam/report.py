@@ -10,7 +10,7 @@ from rich.console import Console
 
 from ..types.evaluation import EvaluationOutput
 from ..types.evaluation_report import EvaluationReport
-from .strategies.base import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, _run_results
+from ..types.redteam.run_results import ATTACKER_REFUSED, REFUSAL_JUDGE_FAILURES, _run_results
 
 # Transcripts are untrusted model text, so square brackets must print literally, not parse as Rich markup.
 _console = Console(markup=False)

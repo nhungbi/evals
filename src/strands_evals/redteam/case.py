@@ -7,9 +7,9 @@ from typing_extensions import Self
 
 from ..case import Case
 from ..types import InputT, OutputT
+from ..types.redteam import RedTeamConfig
+from ..types.redteam.risk_category import resolve_risk_category
 from .strategies.base import AttackStrategy
-from .types import RedTeamConfig
-from .types.risk_category import resolve_risk_category
 
 
 class RedTeamCase(Case[InputT, OutputT]):

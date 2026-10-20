@@ -84,6 +84,9 @@ strands-evals/
 │   │   │   ├── failure_communication_evaluator.py
 │   │   │   ├── partial_completion_evaluator.py
 │   │   │   └── recovery_strategy_evaluator.py
+│   │   ├── redteam/                          # Red team evaluators
+│   │   │   ├── attack_success_evaluator.py   # AttackSuccessEvaluator
+│   │   │   └── prompt_templates/attack_success/
 │   │   ├── deterministic/                    # Non-LLM evaluators
 │   │   │   ├── output.py
 │   │   │   ├── trajectory.py
@@ -108,7 +111,6 @@ strands-evals/
 │   │   ├── task.py                           # _build_attacker_task
 │   │   ├── utils.py                          # _put_model_field (used by to_dict)
 │   │   ├── report.py                         # RedTeamReport / AttackResult / GroupedSummary
-│   │   ├── evaluators/                       # AttackSuccessEvaluator
 │   │   ├── generators/                       # AdversarialCaseGenerator + TargetSpec
 │   │   ├── strategies/                       # AttackStrategy base + per-strategy subpackages
 │   │   │   ├── base.py                       # AttackStrategy ABC + AttackRunResult; MAX_ALLOWED_TURNS = 50 (hard cap)
@@ -122,7 +124,7 @@ strands-evals/
 │   │   │   ├── pair/                         # PairStrategy + prompt template
 │   │   │   ├── prompt_strategy/              # PromptStrategy + gradual_escalation template
 │   │   │   └── sequentialbreak/              # SequentialBreakStrategy
-│   │   └── types/                            # AttackGoal, RedTeamConfig, RISK_CATEGORIES, Severity
+│   │   └── (evaluator in evaluators/redteam/, types in types/redteam/)
 │   │
 │   ├── experimental/                         # Experimental features (no stability guarantees)
 │   │
@@ -205,6 +207,10 @@ strands-evals/
 │       ├── trace.py                          # Session, Trace, SpanUnion
 │       ├── detector.py                       # FailureItem, RCAItem, DiagnosisResult, ...
 │       ├── multimodal.py
+│       ├── redteam/
+│       │   ├── config.py                     # AttackGoal, RedTeamConfig, Severity
+│       │   ├── risk_category.py              # RISK_CATEGORIES, DEFAULT_SEVERITY
+│       │   └── run_results.py                # RUN_RESULTS / ATTACKER_REFUSED / REFUSAL_JUDGE_FAILURES run-stats keys
 │       └── simulation/
 │           ├── actor.py
 │           └── tool.py
@@ -212,6 +218,7 @@ strands-evals/
 ├── tests/strands_evals/                      # Unit tests (mirrors src/strands_evals/)
 │   ├── evaluators/
 │   │   ├── chaos/
+│   │   ├── redteam/
 │   │   └── deterministic/
 │   ├── chaos/
 │   ├── detectors/
@@ -227,6 +234,7 @@ strands-evals/
 │   ├── cli/
 │   │   └── fixtures/                         # local agent / task / evaluator fixtures
 │   └── types/
+│       └── redteam/
 │
 ├── tests_integ/                              # Integration tests (real providers)
 │

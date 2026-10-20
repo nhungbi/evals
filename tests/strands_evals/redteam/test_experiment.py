@@ -10,8 +10,8 @@ from strands_evals import LocalFileTaskResultStore
 from strands_evals.case import Case
 from strands_evals.evaluators import Evaluator
 from strands_evals.evaluators.prompt_templates.case_prompt_template import compose_test_prompt
+from strands_evals.evaluators.redteam import AttackSuccessEvaluator
 from strands_evals.redteam.case import RedTeamCase
-from strands_evals.redteam.evaluators import AttackSuccessEvaluator
 from strands_evals.redteam.experiment import RedTeamExperiment
 from strands_evals.redteam.report import RedTeamReport
 from strands_evals.redteam.strategies import (
@@ -23,8 +23,8 @@ from strands_evals.redteam.strategies import (
     SequentialBreakStrategy,
 )
 from strands_evals.redteam.strategies.base import RUN_RESULTS, AttackRunResult, AttackStrategy
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
 from strands_evals.types import EvaluationOutput
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
 
 class _StubModel(Model):

@@ -15,7 +15,7 @@ from strands_evals.redteam.strategies.sequentialbreak import (
     success_score,
 )
 from strands_evals.redteam.strategies.target_session import StrandsAgentSession, TargetCheckpoint
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
 _SB = "strands_evals.redteam.strategies.sequentialbreak"
 _ALL_VARIANTS = ["dc_t1", "dc_t2", "ge_t1", "ge_t2", "qb_t1"]

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ...types import RISK_CATEGORIES
+from ....types.redteam import RISK_CATEGORIES
 
 if TYPE_CHECKING:
-    from ...types import AttackGoal
+    from ....types.redteam import AttackGoal
 
 
 # Per-category "top score" anchor: what a Likert score-{scale_points} example must show to sit at

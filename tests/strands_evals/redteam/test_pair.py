@@ -11,7 +11,7 @@ from strands_evals.redteam.strategies import BUILTIN_STRATEGIES, PairStrategy
 from strands_evals.redteam.strategies.base import AttackRunResult
 from strands_evals.redteam.strategies.pair import gen_refined_prompt, success_score
 from strands_evals.redteam.strategies.target_session import StrandsAgentSession, TargetCheckpoint
-from strands_evals.redteam.types import AttackGoal, RedTeamConfig
+from strands_evals.types.redteam import AttackGoal, RedTeamConfig
 
 _PAIR = "strands_evals.redteam.strategies.pair"
 

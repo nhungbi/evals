@@ -4,7 +4,7 @@ Adversarial safety testing for Strands agents. Red teaming runs attack strategie
 
 ## How it works
 
-An [`AttackStrategy`](strategies/base.py) drives an adversarial conversation against the target through a [`TargetSession`](strategies/target_session.py), and an [`AttackSuccessEvaluator`](evaluators/attack_success_evaluator.py) (LLM-as-a-judge) scores the resulting conversation on a continuous `0.0`–`1.0` scale. You assemble cases, strategies, and the target agent into a [`RedTeamExperiment`](experiment.py), run it, and read the breaches off a [`RedTeamReport`](report.py).
+An [`AttackStrategy`](strategies/base.py) drives an adversarial conversation against the target through a [`TargetSession`](strategies/target_session.py), and an [`AttackSuccessEvaluator`](../evaluators/redteam/attack_success_evaluator.py) (LLM-as-a-judge) scores the resulting conversation on a continuous `0.0`–`1.0` scale. You assemble cases, strategies, and the target agent into a [`RedTeamExperiment`](experiment.py), run it, and read the breaches off a [`RedTeamReport`](report.py).
 
 ```
 RedTeamCase (risk category + actor goal)
@@ -243,11 +243,14 @@ redteam/
 ├── case.py                # RedTeamCase
 ├── report.py              # RedTeamReport, AttackResult, GroupedSummary
 ├── task.py                # built-in task: runs each case's strategy against its TargetSession
-├── types/                 # AttackGoal, RedTeamConfig, RISK_CATEGORIES
 ├── generators/            # AdversarialCaseGenerator
-├── evaluators/            # AttackSuccessEvaluator + judge prompt templates
 └── strategies/            # the attack strategies + TargetSession implementations
+
+evaluators/redteam/        # AttackSuccessEvaluator + judge prompt templates
+types/redteam/             # AttackGoal, RedTeamConfig, RISK_CATEGORIES, run-stats keys
 ```
+
+Everything above is importable from `strands_evals.redteam`.
 
 ## Documentation
 
