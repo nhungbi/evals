@@ -136,9 +136,11 @@ class CrescendoStrategy(AttackStrategy):
     Escalates over up to `max_turns` turns, backtracking on refusals (up to `max_backtracks`) and stopping
     early once a turn scores at or above `success_threshold`. Stateless across cases.
 
-    By default any tool call ends the case as a success and shields that turn from backtracking. Pass
-    `stop_on_tool_call=False` for targets whose tools are read-only lookups, so a lookup-backed refusal is
-    backtracked and the escalation runs its full course; the evaluator still sees every tool call in the trace.
+    By default any tool call ends the case as a success and shields that turn from backtracking. With
+    `stop_on_tool_call=False` tool calls no longer affect stopping or backtracking: every turn is judged on its
+    text alone, for all tools, including ones that act. Tool calls from every turn, backtracked ones included,
+    stay in the trace, so the evaluator still judges them. Meant for targets whose tools are read-only lookups;
+    on a target with write tools, the escalation may continue past, or backtrack, a turn that took a real action.
     """
 
     def __init__(
@@ -209,7 +211,7 @@ class CrescendoStrategy(AttackStrategy):
             response = response or ""
 
             # A turn that drove a tool call complied through action; never backtrack it away. With
-            # stop_on_tool_call=False the caller declares its tools read-only, so a call carries no loop signal.
+            # stop_on_tool_call=False tool calls don't affect stopping or backtracking, whatever the tool.
             tool_call_this_turn = len(target_session.trace) > snap.trace_len
             tool_call_decides_turn = self._stop_on_tool_call and tool_call_this_turn
 
