@@ -557,6 +557,56 @@ def test_plain_tool_call_stops_loop_independent_of_refusal():
     assert session.trace == [{"name": "exfiltrate", "input": {}}]
 
 
+def test_stop_on_tool_call_false_lets_read_only_tool_turns_escalate():
+    """evals#438: a target that answers everything through a read-only lookup must not end the
+    case on turn 1. With stop_on_tool_call=False the loop runs to max_turns and the strategy's
+    own signal stays False (the evaluator, which sees the full trace, remains authoritative)."""
+    session = _session(
+        lambda _m: "here is what the archive says",
+        tool_uses_fn=lambda _m: [{"name": "read_archive", "input": {}}],
+    )
+    strat = _strategy(max_turns=3, max_backtracks=5, stop_on_tool_call=False)
+    with (
+        patch(f"{_CRESCENDO}.gen_escalating_question", return_value="q"),
+        patch(f"{_CRESCENDO}.is_refusal", return_value=False),
+        patch(f"{_CRESCENDO}.success_score", return_value=0.0),
+    ):
+        result = strat.run_attack(_case(), session, max_turns=10)
+
+    assert result.strategy_succeeded is False
+    assert result.metadata["turns_used"] == 3
+    assert len(session.trace) == 3  # every lookup is still recorded for the evaluator
+
+
+def test_stop_on_tool_call_false_backtracks_a_lookup_backed_refusal():
+    """With stop_on_tool_call=False a tool call no longer shields a refusing turn: it is
+    backtracked like any other refusal, but its tool evidence survives for the evaluator."""
+    replies = iter(["I can't help with that.", "sure, here you go"])
+    session = _session(lambda _m: next(replies), tool_uses_fn=lambda _m: [{"name": "read_archive", "input": {}}])
+    strat = _strategy(max_turns=2, max_backtracks=1, stop_on_tool_call=False)
+    refusals = iter([True, False])
+    with (
+        patch(f"{_CRESCENDO}.gen_escalating_question", return_value="q"),
+        patch(f"{_CRESCENDO}.is_refusal", side_effect=lambda *_a, **_k: next(refusals)),
+        patch(f"{_CRESCENDO}.success_score", return_value=0.0),
+    ):
+        result = strat.run_attack(_case(), session, max_turns=10)
+
+    assert result.metadata["backtracks"] == 1
+    assert result.metadata["turns_used"] == 1
+    assert [t["content"] for t in result.pruned_branches] == ["q", "I can't help with that."]
+    assert len(session.trace) == 2  # the pruned turn's lookup is kept: a refuse-in-words-but-act turn is evidence
+
+
+def test_stop_on_tool_call_round_trips_through_to_dict():
+    strat = CrescendoStrategy(max_turns=2, stop_on_tool_call=False)
+    assert strat.to_dict()["stop_on_tool_call"] is False
+    restored = CrescendoStrategy.from_dict(strat.to_dict())
+    assert isinstance(restored, CrescendoStrategy)
+    assert restored._stop_on_tool_call is False
+    assert CrescendoStrategy().to_dict()["stop_on_tool_call"] is True
+
+
 def test_name_and_default_label():
     assert CrescendoStrategy().name == "crescendo"
     assert CrescendoStrategy().label == "crescendo"
