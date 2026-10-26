@@ -22,7 +22,7 @@ from .declaration.files import FileText, JsonField, SkillLibrary
 from .declaration.markers import Choice, Component, Float, Int, OneOf, TextValue, choice, component
 from .declaration.space import FileSource, Marker, ParamInfo, ParamKind, Space
 from .declaration.tools import ToolDescriptions, tool_descriptions
-from .declaration.tunable import TunableFactory, tunable
+from .declaration.tunable import BuildContext, TunableFactory, tunable
 from .execution.rollout import EnvironmentFn, RolloutFn, TaskFn
 from .optimizer import Optimizer
 from .result import CandidateView, Grain, OptimizationResult
@@ -43,6 +43,7 @@ __all__ = [
     "AtLeast",
     "AtMost",
     "Block",
+    "BuildContext",
     "Budget",
     "Candidate",
     "CandidateView",

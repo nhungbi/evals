@@ -3,11 +3,34 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, overload
 
 from ...types.optimization import Value
 from .space import Marker, Space
+
+
+@dataclass(frozen=True)
+class BuildContext:
+    """What `Optimizer(build_task=...)` receives, once per candidate.
+
+    A dataclass, not a record: it holds a callable and is never saved. New fields may be added
+    later without breaking existing `build_task` functions.
+
+    Attributes:
+        values: The candidate's typed flat values.
+        resolve: `resolve(name)` returns what the factory path would pass for that declared name:
+            a fresh component, a value, or a path inside the candidate's copy.
+        workspace: The candidate's copy of the file-backed folders
+            (`<run>/candidates/<id>/optimization_files/`), or None when the space has no
+            file-backed values. Lets a config-defined agent load the whole edited file, e.g. the
+            `agent.json` a `JsonField` points into.
+    """
+
+    values: Mapping[str, Value]
+    resolve: Callable[[str], Any]
+    workspace: Path | None
 
 
 class _ResourceConflictError(TypeError):

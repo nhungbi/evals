@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
 
 from ..experiment import Experiment
-from ..types.optimization import IterationRecord, Value
+from ..types.optimization import IterationRecord
 from .acceptance.budget import Budget
 from .acceptance.gate import Gate
 from .declaration.space import Marker
-from .declaration.tunable import TunableFactory
+from .declaration.tunable import BuildContext, TunableFactory
 from .execution.rollout import EnvironmentFn, RolloutFn, TaskFn
 from .result import OptimizationResult
 from .scoring.objectives import Constraint, Objective
@@ -26,6 +25,11 @@ class Optimizer:
     and `rollout_fn=` work only with `factory=`. `objective=None` maximizes the mean of every
     evaluator's score, as a plain eval run reports it. `retries` caps the infrastructure re-run
     passes per candidate. Construction warns when a TPE block is combined with `CaseFrontier`.
+
+    `build_task(ctx)` is called once per candidate and returns the `Experiment` task, `task(case)`.
+    Build the agent inside `task`, never in `build_task` itself: an agent shared across cases and
+    runs carries conversation state from one trial into the next (invariant 7). The factory path
+    enforces this; `build_task` can't.
     """
 
     def __init__(
@@ -34,7 +38,7 @@ class Optimizer:
         *,
         factory: TunableFactory | None = None,
         rollout_fn: RolloutFn | None = None,
-        build_task: Callable[[Mapping[str, Value], Callable[[str], Any]], TaskFn] | None = None,
+        build_task: Callable[[BuildContext], TaskFn] | None = None,
         space: Mapping[str, Marker] | None = None,
         objective: Objective | None = None,
         constraints: Sequence[Constraint] = (),
@@ -67,7 +71,7 @@ class Optimizer:
         experiment: Experiment,
         factory: TunableFactory | None = None,
         rollout_fn: RolloutFn | None = None,
-        build_task: Callable[[Mapping[str, Value], Callable[[str], Any]], TaskFn] | None = None,
+        build_task: Callable[[BuildContext], TaskFn] | None = None,
         space: Mapping[str, Marker] | None = None,
         objective: Objective | None = None,
         constraints: Sequence[Constraint] = (),
