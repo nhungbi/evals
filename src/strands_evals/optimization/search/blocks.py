@@ -1,12 +1,12 @@
-"""Blocks (a method owning some variables) and the search that holds them."""
+"""Blocks (a method owning some variables), schedules (which blocks propose), and the search that holds them."""
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from ..declaration.space import Space
 from .method import Method
-from .schedules import Schedule
 
 
 class Block:
@@ -31,6 +31,33 @@ class Block:
             *variables: Declared names or flat keys.
             name: Stable block name; defaults to the method's class name.
         """
+        raise NotImplementedError
+
+
+class Schedule(ABC):
+    """`turn` counts earlier proposing iterations; a merge iteration is not a turn."""
+
+    @abstractmethod
+    def blocks_for(self, turn: int, blocks: Sequence[Block]) -> list[Block]:
+        """Which blocks propose this iteration.
+
+        Args:
+            turn: Earlier proposing iterations; a merge iteration is not a turn.
+            blocks: Every block, in order.
+        """
+
+
+class Joint(Schedule):
+    """Every block, every iteration; each patch is its own candidate changing only its block."""
+
+    def blocks_for(self, turn: int, blocks: Sequence[Block]) -> list[Block]:
+        raise NotImplementedError
+
+
+class Alternate(Schedule):
+    """One block per iteration, in block order, so an accepted change touched one block."""
+
+    def blocks_for(self, turn: int, blocks: Sequence[Block]) -> list[Block]:
         raise NotImplementedError
 
 

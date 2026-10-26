@@ -28,10 +28,9 @@ from .optimizer import Optimizer
 from .result import CandidateView, Grain, OptimizationResult
 from .rewards import RewardFunction, RewardFunctionEvaluator, RewardResult
 from .scoring.objectives import AtLeast, AtMost, Constraint, Maximize, MetricExpr, Minimize, Objective, metric
-from .search.blocks import Block, Search
+from .search.blocks import Alternate, Block, Joint, Schedule, Search
 from .search.method import Method, ProposalRequest
 from .search.reflection import Reflection
-from .search.schedules import Alternate, Joint, Schedule
 from .search.tpe import TPE
 from .selection.base import Selection, SelectionContext
 from .selection.frontier import CaseFrontier
