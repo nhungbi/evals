@@ -5,35 +5,51 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
+# `default=` not given: `tunable` fills in the wrapped parameter's own default.
+_UNSET: Any = object()
+
 
 class Int:
-    """An integer argument with inclusive bounds; `default` must lie in `[ge, le]`."""
+    """An integer argument with inclusive bounds; the default must lie in `[ge, le]`.
 
-    def __init__(self, ge: int, le: int, *, default: int, log: bool = False):
+    Without `default=`, the wrapped function's parameter default is used. With neither (always the
+    case under `build_task`'s `space=`, which has no function), declaration raises `TypeError`.
+    """
+
+    def __init__(self, ge: int, le: int, *, default: int = _UNSET, log: bool = False):
         raise NotImplementedError
 
 
 class Float:
-    """A float argument with inclusive bounds; `default` must lie in `[ge, le]`."""
+    """A float argument with inclusive bounds; the default must lie in `[ge, le]`.
 
-    def __init__(self, ge: float, le: float, *, default: float, log: bool = False):
+    Without `default=`, the wrapped function's parameter default is used; with neither, declaration
+    raises `TypeError`.
+    """
+
+    def __init__(self, ge: float, le: float, *, default: float = _UNSET, log: bool = False):
         raise NotImplementedError
 
 
-_FIRST: Any = object()
-
-
 class OneOf:
-    """A choice among plain values; the first option is the default unless one is given."""
+    """A choice among plain values.
 
-    def __init__(self, *options: str | int | float | bool | None, default: Any = _FIRST):
+    The default is `default=` if given, else the wrapped function's parameter default, else the first
+    option. A default that isn't one of the options raises `TypeError` at declaration.
+    """
+
+    def __init__(self, *options: str | int | float | bool | None, default: Any = _UNSET):
         raise NotImplementedError
 
 
 class TextValue:
-    """A text knob; `size_cap` rejects prompt bloat (default: `_default_size_cap(default)`)."""
+    """A text knob; `size_cap` rejects prompt bloat (default: `_default_size_cap(default)`).
 
-    def __init__(self, *, default: str, size_cap: int | None = None, edit_instructions: str | None = None):
+    Without `default=`, the wrapped function's parameter default is used; with neither, declaration
+    raises `TypeError`.
+    """
+
+    def __init__(self, *, default: str = _UNSET, size_cap: int | None = None, edit_instructions: str | None = None):
         raise NotImplementedError
 
 
@@ -45,8 +61,11 @@ class Choice:
     """A swap between components, returned by `choice()`; the first alternative is the baseline."""
 
 
-def component(factory: Callable[..., Any], **kwargs: Any) -> Component:
-    """Declare one constructible alternative; `Int`/`Float` kwargs are tunable, others pass through."""
+def component(factory: Callable[..., Any], /, **kwargs: Any) -> Component:
+    """Declare one constructible alternative; `Int`/`Float` kwargs are tunable, others pass through.
+
+    `factory` is positional-only, so a constructor kwarg named `factory` can still be passed.
+    """
     raise NotImplementedError
 
 

@@ -5,20 +5,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from typing_extensions import TypeAlias
 
 from ...types.optimization import Value
+from .files import FileText, JsonField, SkillLibrary
+from .markers import Choice, Component, Float, Int, OneOf, TextValue
+from .tools import ToolDescriptions
 
-if TYPE_CHECKING:
-    from .files import FileText, JsonField, SkillLibrary
-    from .markers import Choice, Component, Float, Int, OneOf, TextValue
-    from .tools import ToolDescriptions
-
-    Marker: TypeAlias = (
-        Int | Float | OneOf | TextValue | Component | Choice | FileText | JsonField | SkillLibrary | ToolDescriptions
-    )
+Marker: TypeAlias = (
+    Int | Float | OneOf | TextValue | Component | Choice | FileText | JsonField | SkillLibrary | ToolDescriptions
+)
 
 ParamKind = Literal["int", "float", "one_of", "choice", "text"]
 
@@ -34,14 +32,17 @@ class FileSource:
 
 @dataclass(frozen=True)
 class ParamInfo:
-    """One flat key of the space; `active_when` is `(key, value)` of the choice that enables it."""
+    """One flat key of the space; `active_when` is `(key, value)` of the choice that enables it.
+
+    `ge` / `le` are the inclusive bounds of an `Int` / `Float`, named as on the markers.
+    """
 
     key: str
     name: str
     kind: ParamKind
     default: Value
-    low: float | None
-    high: float | None
+    ge: float | None
+    le: float | None
     log: bool
     options: tuple[Value, ...] | None
     size_cap: int | None

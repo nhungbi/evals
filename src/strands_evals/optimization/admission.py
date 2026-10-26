@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ..types.optimization import Admission, CandidateScores, SelectionContext
+from ..types.optimization import Admission, CandidateScores
 from .scoring.objectives import Criteria
-from .selection.base import Selection
+from .selection.base import Selection, SelectionContext
 
 
 def admit(
@@ -21,6 +21,9 @@ def admit(
 ) -> Admission:
     """Selection-split scores only, never the holdout.
 
-    Constraints and coverage always run first, so a custom `Selection` can't skip them.
+    Fixed order: constraints (`criteria.violations`), coverage (`acceptance.gate.covers`, with
+    `min_coverage` = `gate.min_coverage`), then `selection.admits`. The first two always run, so a
+    custom `Selection` can't skip them. `Admission.cases_led` comes from `selection.frontier.cases_led`
+    over `ctx.scores` plus the candidate, whatever the strategy.
     """
     raise NotImplementedError

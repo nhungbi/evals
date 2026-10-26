@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Budget:
+    """`max_rollouts` always applies; `max_iterations=None` means no iteration cap."""
+
     max_rollouts: int = 500
     max_iterations: int | None = None
 

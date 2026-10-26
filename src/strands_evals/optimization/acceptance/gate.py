@@ -9,7 +9,7 @@ from ...types.optimization import AcceptanceVerdict, CandidateScores
 from ..scoring.objectives import Criteria
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Gate:
     """Acceptance settings; there is no way to turn the gate off.
 
@@ -35,7 +35,12 @@ def decide(
     *,
     seed: int | str,
 ) -> AcceptanceVerdict:
-    """Ordered checks on the holdout: coverage, constraints, tie, margin, CI. Ties reject."""
+    """Ordered checks on the holdout: coverage, constraints, tie, margin, CI. Ties reject.
+
+    `seed` is a str from the optimizer (`f"{run seed}:{iteration}:gate"`), so each iteration's bootstrap
+    differs but replays on resume; `random.Random` seeds str values the same way in every process,
+    unlike `hash()`.
+    """
     raise NotImplementedError
 
 

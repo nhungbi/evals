@@ -42,7 +42,7 @@ class Search:
     schedule: Schedule
     redraws: int
 
-    def __init__(self, blocks: Sequence[Block] = (), schedule: Schedule | None = None, redraws: int = 3):
+    def __init__(self, blocks: Sequence[Block] = (), *, schedule: Schedule | None = None, redraws: int = 3):
         """Two blocks with the same name (e.g. two unnamed TPE blocks) raise `ValueError`."""
         raise NotImplementedError
 

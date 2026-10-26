@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, overload
+from typing import Any, overload
 
 from ...types.optimization import Value
-from .space import Space
-
-if TYPE_CHECKING:
-    from .space import Marker
+from .space import Marker, Space
 
 
 class _ResourceConflictError(TypeError):
@@ -55,6 +52,8 @@ def tunable(
 ) -> TunableFactory | Callable[[Callable[..., Any]], TunableFactory]:
     """Declare tunable parameters: `tunable(fn, inject={...})` or `@tunable(name=marker, ...)`.
 
-    A marker naming no parameter of `fn` (unless `fn` takes `**kwargs`) raises `TypeError`.
+    A marker naming no parameter of `fn` (unless `fn` takes `**kwargs`) raises `TypeError`. A marker
+    without `default=` takes the parameter's own default, so `fn()` and the baseline build the same
+    agent; a marker with neither raises `TypeError`.
     """
     raise NotImplementedError

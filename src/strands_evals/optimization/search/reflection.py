@@ -6,9 +6,9 @@ from typing import Any, ClassVar
 
 from strands.models.model import Model
 
-from ...types.optimization import Observation, Patch, ProposalRequest
+from ...types.optimization import Observation, Patch
 from ..declaration.space import ParamKind
-from .method import Method
+from .method import Method, ProposalRequest
 
 
 class Reflection(Method):

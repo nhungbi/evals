@@ -3,27 +3,30 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Literal
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True)
-class Splits:
+
+class Splits(BaseModel):
     """The run's one train / selection / holdout split; every split holds at least one case."""
+
+    model_config = ConfigDict(frozen=True)
 
     train: tuple[str, ...]
     selection: tuple[str, ...]
     holdout: tuple[str, ...]
 
 
-@dataclass
-class CandidateScores:
+class CandidateScores(BaseModel):
     """One candidate's scores on one split.
 
     `per_case` is the mean of that case's measured per-run scalars; a run's scalar is measured only
     when its status is completed. `per_metric` holds per-metric means (usage over completed and
     agent_failure runs), used by constraints.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     candidate_id: str
     per_case: dict[str, float]
@@ -40,18 +43,20 @@ class CandidateScores:
         raise NotImplementedError
 
 
-@dataclass(frozen=True)
-class SplitScores:
+class SplitScores(BaseModel):
     """One `CandidateScores` per split, never mixed; a split not scored yet is empty."""
+
+    model_config = ConfigDict(frozen=True)
 
     train: CandidateScores
     selection: CandidateScores
     holdout: CandidateScores
 
 
-@dataclass(frozen=True)
-class PairedComparison:
+class PairedComparison(BaseModel):
     """Paired bootstrap result on the cases both candidates measured."""
+
+    model_config = ConfigDict(frozen=True)
 
     mean_diff: float
     ci_low: float
@@ -59,9 +64,10 @@ class PairedComparison:
     n_cases: int
 
 
-@dataclass(frozen=True)
-class AcceptanceVerdict:
+class AcceptanceVerdict(BaseModel):
     """The holdout gate's decision for one challenger."""
+
+    model_config = ConfigDict(frozen=True)
 
     accepted: bool
     reason: str
@@ -70,13 +76,14 @@ class AcceptanceVerdict:
     coverage: float
 
 
-@dataclass(frozen=True)
-class Admission:
+class Admission(BaseModel):
     """Admission on the selection split.
 
     `infeasible`: a constraint or coverage failed. `dominated`: the selection strategy said no.
-    `cases_led` is None unless admitted.
+    `cases_led` is None unless admitted; computed by `admit` for every strategy, possibly `[]`.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     outcome: Literal["admitted", "infeasible", "dominated"]
     reason: str

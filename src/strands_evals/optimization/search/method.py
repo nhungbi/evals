@@ -1,19 +1,44 @@
-"""The `Method` base class: proposes values, never decides what is accepted."""
+"""The `Method` base class and its request: proposes values, never decides what is accepted."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ...types.optimization import Observation, Patch, ProposalRequest
-from ..declaration.space import ParamKind
+from ...types.optimization import Observation, Patch, ReflectionRecord
+from ..candidates.candidate import Candidate
+from ..declaration.space import ParamKind, Space
+
+
+@dataclass(frozen=True)
+class ProposalRequest:
+    """Everything a method may see when proposing; never holdout data.
+
+    A dataclass, not a record: it holds the space, the parent, and a callback, and is never saved.
+    `log(event, **fields)` writes a lineage event; a method writes only `screened` and
+    `proposer_error` (any other name raises `ValueError`). `attempt` is the redraw number within this
+    iteration and block (0 = first ask).
+    """
+
+    space: Space
+    keys: Sequence[str]
+    parent: Candidate
+    records: Sequence[ReflectionRecord]
+    n: int
+    iteration: int
+    seed: int
+    attempt: int
+    log: Callable[..., None]
 
 
 class Method(ABC):
     """Proposes patches on a parent and learns from how each one did.
 
-    `kinds` are the variable types it can propose. `uses_records=True` means the parent is scored
-    on the train split before `propose` if it has no train records.
+    `kinds` are the variable types it can propose. `uses_records=True` means the method reads the
+    parent's train-split records, so the parent is scored on the train split before `propose` if it
+    has none. An ABC because users subclass it.
     """
 
     kinds: ClassVar[frozenset[ParamKind]]
@@ -31,5 +56,8 @@ class Method(ABC):
         """Called exactly once per patch this method returned."""
 
     def config(self) -> dict[str, Any]:
-        """JSON-serializable constructor arguments, stored in `run.json` and compared on resume."""
-        raise NotImplementedError
+        """JSON-serializable constructor arguments, stored in `run.json` and compared on resume.
+
+        Override it so a changed setting is caught on resume; the default `{}` checks nothing.
+        """
+        return {}

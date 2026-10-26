@@ -75,7 +75,11 @@ class Constraint:
 
 
 def metric(name: str | Evaluator | type[Evaluator]) -> MetricExpr:
-    """An evaluator score or usage metric; an evaluator class or instance resolves via `get_name()`."""
+    """An evaluator score or usage metric.
+
+    An evaluator instance resolves via `get_name()` (its `name=` or class name); a class via
+    `get_type_name()`. Names are checked against the run's evaluators when the `Optimizer` is built.
+    """
     raise NotImplementedError
 
 
@@ -98,8 +102,8 @@ def AtLeast(target: str | MetricExpr, bound: float) -> Constraint:
 class Criteria:
     """The objective plus the constraints; names resolve through the registry at construction."""
 
-    def __init__(self, objectives: Objective | None, constraints: Sequence[Constraint], registry: MetricRegistry):
-        """`objectives=None` means maximize the mean of every evaluator's score."""
+    def __init__(self, objective: Objective | None, constraints: Sequence[Constraint], registry: MetricRegistry):
+        """`objective=None` means maximize the mean of every evaluator's score."""
         raise NotImplementedError
 
     def scalar(self, metrics: Mapping[str, float]) -> float | None:

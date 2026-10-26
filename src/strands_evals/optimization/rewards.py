@@ -8,6 +8,7 @@ from typing import Any
 from typing_extensions import NotRequired, TypedDict
 
 from ..evaluators.evaluator import Evaluator
+from ..types.evaluation import EvaluationData, EvaluationOutput, InputT, OutputT
 
 
 class RewardResult(TypedDict):
@@ -22,8 +23,15 @@ class RewardFunction(ABC):
     def __call__(self, **rollout_fields: Any) -> RewardResult: ...
 
 
-class RewardFunctionEvaluator(Evaluator):
+class RewardFunctionEvaluator(Evaluator[InputT, OutputT]):
     """Adapts a `RewardFunction` into an `Evaluator`; the reason falls back to `f"reward_value={score}"`."""
 
     def __init__(self, reward: RewardFunction, *, pass_threshold: float = 1.0, name: str | None = None):
+        raise NotImplementedError
+
+    def evaluate(self, evaluation_case: EvaluationData[InputT, OutputT]) -> list[EvaluationOutput]:
+        """Call the reward with the case's fields; `test_pass` = `reward_value >= pass_threshold`."""
+        raise NotImplementedError
+
+    async def evaluate_async(self, evaluation_case: EvaluationData[InputT, OutputT]) -> list[EvaluationOutput]:
         raise NotImplementedError

@@ -49,14 +49,18 @@ class TrialCache(Protocol):
     def save(self, record: TrialRecord) -> None: ...
 
     def save_report(
-        self, candidate_id: str, split: str, run_index: int, pass_index: int, report: EvaluationReport
+        self, candidate_id: str, split: SplitName, run_index: int, pass_index: int, report: EvaluationReport
     ) -> None:
-        """`pass_index` 0 = first pass, k = k-th re-run."""
+        """`pass_index` 0 = first pass, k = k-th re-run pass (at most `retries`)."""
         ...
 
 
 class TrialRunner:
-    """Runs a candidate's uncached trials through a fresh `Experiment` per call."""
+    """Runs a candidate's uncached trials through a fresh `Experiment` per call.
+
+    `retries` caps the infrastructure re-run passes per call (D7); `Experiment` keeps its own throttling
+    retries inside each attempt.
+    """
 
     def __init__(
         self,
@@ -84,13 +88,16 @@ class TrialRunner:
         runs: int,
         allowance: int,
     ) -> tuple[list[TrialRecord], int]:
-        """Score every run, then one re-run pass over infrastructure failures; returns (records, rollouts spent).
+        """Score every run, then re-run infrastructure failures; returns (records, rollouts spent).
 
         Returns one record per requested (case, run), cached ones included, so `score()` sees the whole
         candidate.
 
         `task` is not yet instrumented (`make_task(...)` or the `build_task` path's task); each run wraps
-        it with `instrument(task, TrialLog(), traces)`. `allowance` caps only the re-run pass. A judge-only
+        it with `instrument(task, TrialLog(), traces)`. After every run's first pass, up to `retries`
+        re-run passes each retry the trials still `infrastructure_invalid`. `allowance` is the budget left
+        (`BudgetTracker.remaining`) and caps only the re-run passes; trials left when it runs out stay
+        `infrastructure_invalid`. A judge-only
         infrastructure failure re-runs just the judges on the saved output, for 0 rollouts. Each trial is
         saved as soon as it finishes.
         """

@@ -21,10 +21,15 @@ class MetricRegistry:
     """Maps metric names as written to evaluator names or usage metrics."""
 
     def __init__(self, evaluator_names: Sequence[str]):
+        """`evaluator_names` are `get_name()` values; one equal to a usage metric name raises `ValueError`."""
         raise NotImplementedError
 
     def resolve(self, name: str) -> str:
-        """`"Helpfulness"` -> `"HelpfulnessEvaluator"`; an unknown name raises `ValueError`."""
+        """An exact evaluator or usage metric name first, then `"Helpfulness"` -> `"HelpfulnessEvaluator"`.
+
+        The shorthand applies only when it matches exactly one evaluator; unknown or ambiguous names
+        raise `ValueError`.
+        """
         raise NotImplementedError
 
 

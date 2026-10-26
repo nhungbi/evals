@@ -21,7 +21,7 @@ class ResumeState:
         parents: Candidate id -> parent ids.
         turn: Completed proposing iterations (for `Schedule.blocks_for`).
         exhausted: Blocks that produced zero candidates on their latest turn.
-        merges_done: Merges scored so far (capped at 5 per run); `merged_pairs` also holds pairs
+        merges_done: Merges scored so far (capped at `selection.frontier.MAX_MERGES`); `merged_pairs` also holds pairs
             skipped because the merged values already existed.
         observations: Per block name, in lineage order; replayed through each block's
             `method.observe()` before the first new iteration.

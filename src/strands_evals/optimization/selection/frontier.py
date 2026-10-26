@@ -6,15 +6,17 @@ import random
 from collections.abc import Mapping, Sequence
 from typing import ClassVar
 
-from ...types.optimization import SelectionContext, SelectionStep
-from .base import Selection
+from ...types.optimization import SelectionStep
+from .base import Selection, SelectionContext
+
+MAX_MERGES = 5  # merges scored per run, across all pairs
 
 
 class CaseFrontier(Selection):
     """Parent sampled from the frontier weighted by cases led; admits only proposals on the frontier.
 
     Merges two frontier members that changed disjoint variables since their latest common ancestor;
-    each pair once, at most 5 per run. A pair whose merged values fail validation is skipped.
+    each pair once, at most `MAX_MERGES` per run. A pair whose merged values fail validation is skipped.
     """
 
     name: ClassVar[str] = "case_frontier"
@@ -22,7 +24,7 @@ class CaseFrontier(Selection):
     def choose(self, ctx: SelectionContext) -> SelectionStep:
         raise NotImplementedError
 
-    def admits(self, candidate_id: str, scores: Mapping[str, float], ctx: SelectionContext) -> list[str] | None:
+    def admits(self, candidate_id: str, scores: Mapping[str, float], ctx: SelectionContext) -> bool:
         raise NotImplementedError
 
 
@@ -30,6 +32,15 @@ def case_frontier(scores: Mapping[str, Mapping[str, float]], cases: Sequence[str
     """Members and the cases each leads; exact ties share, older members win ties to join.
 
     `scores` maps candidate id -> case name -> score; the result maps member id -> cases it leads.
+    """
+    raise NotImplementedError
+
+
+def cases_led(candidate_id: str, scores: Mapping[str, Mapping[str, float]], cases: Sequence[str]) -> list[str]:
+    """The cases where `candidate_id` has the best score in `scores` (exact ties share); possibly `[]`.
+
+    `scores` maps candidate id -> case name -> score and includes the candidate. Used by `admit`
+    for every strategy.
     """
     raise NotImplementedError
 

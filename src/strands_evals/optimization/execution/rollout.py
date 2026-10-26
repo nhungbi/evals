@@ -42,7 +42,8 @@ def instrument(task: TaskFn, log: TrialLog, traces: TraceCapture) -> TaskFn:
     """Open one span per attempt, classify and re-raise errors, and attach the `Session` as trajectory.
 
     Called by `TrialRunner.run`, once per run with a fresh `TrialLog`. A `_ResourceConflictError` is
-    stored as `log.setup_error`, not classified. A rollout-returned trajectory wins; a bare return
-    becomes `{"output": value, "trajectory": session}`.
+    stored as `log.setup_error`, not classified. A rollout-returned `trajectory` that is not None wins;
+    a returned dict without one gets a copy with the `Session` added, never the dict itself changed;
+    a non-dict return becomes `{"output": value, "trajectory": session}`. No agent spans -> trajectory None.
     """
     raise NotImplementedError

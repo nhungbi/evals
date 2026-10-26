@@ -15,6 +15,7 @@ def tool_descriptions(*tools: AgentTool, size_cap: int = 800, edit_instructions:
     The baseline is the tool's current `tool_spec["description"]`. Every build gets
     `copy.copy(tool)` with the public `tool_spec` setter, so the user's tool is never modified.
     Tools without a `tool_spec` setter (`MCPAgentTool`, bare `AgentTool`) raise `TypeError` at
-    declaration.
+    declaration. `size_cap` defaults to 800 rather than the text markers' derived cap, because tool
+    descriptions are short and every model call carries all of them.
     """
     raise NotImplementedError

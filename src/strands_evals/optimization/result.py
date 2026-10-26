@@ -14,13 +14,11 @@ from .declaration.space import Space
 Grain = Literal["iteration", "proposal", "case"]
 
 
-@dataclass(frozen=True)
 class CandidateView:
-    """A candidate as the results show it; built by the optimizer."""
+    """A candidate as the results show it; built by the optimizer, never by users."""
 
-    _candidate: Candidate
-    _baseline: Candidate
-    _space: Space
+    def __init__(self, candidate: Candidate, baseline: Candidate, space: Space):
+        raise NotImplementedError
 
     @property
     def id(self) -> str:
@@ -44,7 +42,7 @@ class OptimizationResult:
     """What a run returns.
 
     Attributes:
-        frontier: Candidate id -> the selection cases it leads.
+        frontier: Candidate id -> the selection cases it leads; `candidate(id)` gives its view.
         stop_reason: `budget` (what's left can't cover another candidate), `iterations` (the cap),
             `exhausted` (every block produced no candidates on its latest turn), or `proposer_error`
             (a method raised).
@@ -69,7 +67,15 @@ class OptimizationResult:
     def to_rows(self, grain: Grain = "proposal") -> list[dict[str, Any]]:
         raise NotImplementedError
 
-    def to_json(self, grain: Grain = "proposal", path: str | Path | None = None) -> str:
+    def to_json(self, grain: Grain = "proposal") -> str:
+        raise NotImplementedError
+
+    def to_file(self, path: str | Path, grain: Grain = "proposal") -> None:
+        """Write `to_json(grain)` to `path`."""
+        raise NotImplementedError
+
+    def candidate(self, candidate_id: str) -> CandidateView:
+        """Any saved candidate by id, e.g. a `frontier` member; unknown ids raise `KeyError`."""
         raise NotImplementedError
 
     def reports(self, candidate_id: str) -> list[EvaluationReport]:

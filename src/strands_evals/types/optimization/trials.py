@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Literal
 
+from pydantic import BaseModel, ConfigDict
+
 from ..evaluation import EvaluationOutput
+from ..trace import Session
 
 SplitName = Literal["train", "selection", "holdout"]
 
@@ -24,12 +26,15 @@ class TrialStatus(str, Enum):
     VERIFIER_INVALID = "verifier_invalid"
 
 
-@dataclass(frozen=True)
-class Usage:
+class Usage(BaseModel):
     """Model usage summed over `chat` spans (never `invoke_agent` spans, which carry running totals).
 
     For a trial: the last attempt's agent spans, judge spans excluded. The same type holds
     `judge_usage`, `search_cost`, and `judge_cost`.
+
+    Field names differ from `types.trace.TokenUsage` on purpose: they are the user-facing metric names
+    (`USAGE_METRICS`), and `input_tokens` here includes cache tokens, which `TokenUsage.input_tokens`
+    doesn't on every provider.
 
     Attributes:
         tokens: Everything the model processed, including cache (span `total_tokens`).
@@ -43,6 +48,8 @@ class Usage:
         seconds: Duration of the `rollout` span (environment setup and teardown excluded).
     """
 
+    model_config = ConfigDict(frozen=True)
+
     tokens: int
     input_tokens: int
     output_tokens: int
@@ -52,13 +59,14 @@ class Usage:
     seconds: float
 
 
-@dataclass
-class TrialRecord:
+class TrialRecord(BaseModel):
     """One case x one run of one candidate.
 
     Stores no objective scalar: scoring computes each run's scalar from `evaluations` and `usage`.
     Each evaluator name is in exactly one of `evaluations` and `evaluator_errors`.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     candidate_id: str
     case_name: str
@@ -69,7 +77,7 @@ class TrialRecord:
     error: str | None
     attempts: int
     output: Any
-    trajectory: dict | list | None
+    trajectory: list[Any] | Session | None
     interactions: list | None
     environment_state: list | None
     evaluations: dict[str, EvaluationOutput]

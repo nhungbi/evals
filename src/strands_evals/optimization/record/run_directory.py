@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ...types.evaluation_report import EvaluationReport
-from ...types.optimization import TrialRecord
+from ...types.optimization import SplitName, TrialRecord
 from ..candidates.candidate import Candidate
 from .lineage import Lineage
 
@@ -47,7 +47,7 @@ class RunDirectory:
         raise NotImplementedError
 
     def save_report(
-        self, candidate_id: str, split: str, run_index: int, pass_index: int, report: EvaluationReport
+        self, candidate_id: str, split: SplitName, run_index: int, pass_index: int, report: EvaluationReport
     ) -> None:
         """`candidates/<id>/reports/<split>.run<i>.pass<k>.json`."""
         raise NotImplementedError

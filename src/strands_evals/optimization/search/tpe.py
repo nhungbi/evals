@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from ...types.optimization import Observation, Patch, ProposalRequest
+from ...types.optimization import Observation, Patch
 from ..declaration.space import ParamKind
-from .method import Method
+from .method import Method, ProposalRequest
 
 
 class TPE(Method):
@@ -19,7 +19,7 @@ class TPE(Method):
 
     kinds: ClassVar[frozenset[ParamKind]] = frozenset({"int", "float", "one_of", "choice"})
 
-    def __init__(self, seed: int | None = None, n_startup_trials: int = 4):
+    def __init__(self, *, seed: int | None = None, n_startup_trials: int = 4):
         raise NotImplementedError
 
     async def propose(self, request: ProposalRequest) -> list[Patch]:
