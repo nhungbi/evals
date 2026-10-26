@@ -22,8 +22,8 @@ class CandidateScores(BaseModel):
     """One candidate's scores on one split.
 
     `per_case` is the mean of that case's measured per-run scalars; a run's scalar is measured only
-    when its status is completed. `per_metric` holds per-metric means (usage over completed and
-    agent_failure runs), used by constraints.
+    when its status is completed. `per_metric` maps case name -> metric name -> that case's mean
+    (usage over completed and agent_failure runs), used by constraints.
     """
 
     model_config = ConfigDict(frozen=True)

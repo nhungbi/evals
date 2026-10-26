@@ -14,7 +14,9 @@ class TPE(Method):
 
     `seed=None` derives the seed from the run seed. The sampler is reseeded before each ask from
     (seed, iteration, attempt, context), and studies are rebuilt with `add_trial` on resume.
-    Unmeasured outcomes are told as `TrialState.FAIL`; duplicates are not told again.
+    Unmeasured outcomes are told as `TrialState.FAIL`. A duplicate's trial is closed with the existing
+    candidate's scalar (FAIL if that was never measured), so the study learns the point is taken and
+    no trial stays open.
     """
 
     kinds: ClassVar[frozenset[ParamKind]] = frozenset({"int", "float", "one_of", "choice"})

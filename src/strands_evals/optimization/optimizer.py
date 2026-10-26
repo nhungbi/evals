@@ -28,8 +28,8 @@ class Optimizer:
 
     `build_task(ctx)` is called once per candidate and returns the `Experiment` task, `task(case)`.
     Build the agent inside `task`, never in `build_task` itself: an agent shared across cases and
-    runs carries conversation state from one trial into the next (invariant 7). The factory path
-    enforces this; `build_task` can't.
+    runs carries conversation state from one trial into the next, so every trial must build its
+    own. The factory path enforces this; `build_task` can't.
     """
 
     def __init__(
@@ -46,6 +46,9 @@ class Optimizer:
         selection: Selection | None = None,
         gate: Gate | None = None,
         budget: Budget | None = None,
+        holdout_fraction: float = 0.3,
+        selection_fraction: float = 0.3,
+        runs_per_candidate: int = 3,
         environment: EnvironmentFn | None = None,
         proposals_per_iteration: int = 3,
         max_workers: int = 4,
@@ -67,8 +70,12 @@ class Optimizer:
             constraints: Bounds that can only reject.
             search: Which method changes which variables; None means `Search()`.
             selection: How the parent is chosen; None means `Greedy()`.
-            gate: Acceptance and split settings; None means `Gate()`.
+            gate: Acceptance settings; None means `Gate()`.
             budget: Rollout and iteration caps; None means `Budget()`.
+            holdout_fraction: Share of cases held out for the gate; carved first, so a seed holds
+                out the same cases whatever `selection_fraction` is. Fewer than 5 holdout cases warns.
+            selection_fraction: Share of cases for the selection split, carved from the rest.
+            runs_per_candidate: Times every candidate is scored on each case; 1 suits verifiable rewards.
             environment: Per-attempt resources passed to the factory by name.
             proposals_per_iteration: Patches each proposing block returns per iteration.
             max_workers: Parallel trials within one candidate.
@@ -114,7 +121,8 @@ class Optimizer:
         Pass again what `run.json` can't store: the experiment, the agent (`factory=`, or
         `build_task=` with `space=`), `rollout_fn`, `environment`, the objective, constraints,
         search, and selection. They must match the run, else `ValueError` naming the field. The
-        gate, seed, `proposals_per_iteration`, and `retries` are read from `run.json`. Only
+        gate, split fractions, `runs_per_candidate`, seed, `proposals_per_iteration`, and `retries`
+        are read from `run.json`. Only
         `budget`, `max_workers`, and `on_iteration` may differ (`None` keeps the saved value);
         resuming with a larger `Budget` is how to extend a run.
 

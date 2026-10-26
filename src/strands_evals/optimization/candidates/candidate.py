@@ -62,6 +62,7 @@ class Candidate:
         cls,
         space: Space,
         values: Mapping[str, Value],
+        *,
         parents: tuple[str, str],
         rationale: str,
     ) -> Candidate:

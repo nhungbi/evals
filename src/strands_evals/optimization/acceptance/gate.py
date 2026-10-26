@@ -18,9 +18,6 @@ class Gate:
     (0.95 -> 2.5%), not `1 - confidence`.
     """
 
-    runs_per_candidate: int = 3
-    holdout_fraction: float = 0.3
-    selection_fraction: float = 0.3
     margin: float = 0.0
     confidence: float = 0.95
     min_coverage: float = 0.9

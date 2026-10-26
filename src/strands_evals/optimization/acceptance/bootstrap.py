@@ -11,16 +11,16 @@ def paired_bootstrap(
     challenger: Mapping[str, float],
     champion: Mapping[str, float],
     *,
-    level: float,
+    confidence: float,
     seed: int | str,
     resamples: int = 2000,
 ) -> PairedComparison:
-    """Two-sided CI at `level` of the mean per-case difference, over the cases both measured.
+    """Two-sided CI at `confidence` of the mean per-case difference, over the cases both measured.
 
     Args:
         challenger: Case name -> the challenger's holdout score.
         champion: Case name -> the champion's holdout score.
-        level: Two-sided CI level (the gate's `confidence`).
+        confidence: Two-sided CI level, `Gate.confidence`.
         seed: Seeds `random.Random`; the optimizer passes `f"{seed}:{iteration}:gate"`.
         resamples: Number of bootstrap resamples.
 

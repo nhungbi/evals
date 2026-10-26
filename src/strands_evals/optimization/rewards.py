@@ -24,7 +24,12 @@ class RewardFunction(ABC):
 
 
 class RewardFunctionEvaluator(Evaluator[InputT, OutputT]):
-    """Adapts a `RewardFunction` into an `Evaluator`; the reason falls back to `f"reward_value={score}"`."""
+    """Adapts a `RewardFunction` into an `Evaluator`; the reason falls back to `f"reward_value={score}"`.
+
+    Named after the reward's class unless `name=` is given, so two different rewards need no `name=`;
+    two instances of the same reward class do. Refer to it in an objective by that name or with
+    `metric(instance)`; `metric(RewardFunctionEvaluator)` names no particular reward.
+    """
 
     def __init__(self, reward: RewardFunction, *, pass_threshold: float = 1.0, name: str | None = None):
         """Wrap `reward` as an evaluator.
@@ -32,7 +37,7 @@ class RewardFunctionEvaluator(Evaluator[InputT, OutputT]):
         Args:
             reward: The reward function to adapt.
             pass_threshold: `test_pass` is `reward_value >= pass_threshold`.
-            name: The evaluator name; defaults to the class name.
+            name: The evaluator name; defaults to the reward's class name, e.g. `"ExactMatchReward"`.
         """
         raise NotImplementedError
 

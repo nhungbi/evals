@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from ..types.optimization import Admission, CandidateScores
 from .scoring.objectives import Criteria
 from .selection.base import Selection, SelectionContext
@@ -13,7 +11,6 @@ def admit(
     candidate: CandidateScores,
     parent: CandidateScores,
     *,
-    selection_cases: Sequence[str],
     criteria: Criteria,
     selection: Selection,
     ctx: SelectionContext,
@@ -29,10 +26,9 @@ def admit(
     Args:
         candidate: The candidate's selection-split scores.
         parent: The parent's selection-split scores; for a merge, the union of both parents' cases.
-        selection_cases: Every selection case name.
         criteria: Checks the constraints on the selection split.
         selection: The strategy, asked last.
-        ctx: The pool as selection sees it.
+        ctx: The pool as selection sees it; supplies the selection case names.
         min_coverage: `gate.min_coverage`.
 
     Returns:

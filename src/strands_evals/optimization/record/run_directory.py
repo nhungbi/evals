@@ -44,7 +44,7 @@ class RunDirectory:
     def load_candidate(self, candidate_id: str) -> Candidate:
         raise NotImplementedError
 
-    def load(self, candidate_id: str, run_index: int, case: str) -> TrialRecord | None:
+    def load(self, candidate_id: str, run_index: int, case_name: str) -> TrialRecord | None:
         raise NotImplementedError
 
     def save(self, record: TrialRecord) -> None:
@@ -54,7 +54,7 @@ class RunDirectory:
     def save_report(
         self, candidate_id: str, split: SplitName, run_index: int, pass_index: int, report: EvaluationReport
     ) -> None:
-        """`candidates/<id>/reports/<split>.run<i>.pass<k>.json`."""
+        """`candidates/<id>/reports/<split>.run<i>.pass<k>.json`; never overwrites an existing report."""
         raise NotImplementedError
 
     def reports(self, candidate_id: str) -> list[EvaluationReport]:

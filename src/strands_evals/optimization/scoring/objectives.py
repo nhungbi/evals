@@ -74,7 +74,7 @@ class Constraint:
         raise NotImplementedError
 
 
-def metric(name: str | Evaluator | type[Evaluator]) -> MetricExpr:
+def metric(target: str | Evaluator | type[Evaluator], /) -> MetricExpr:
     """An evaluator score or usage metric.
 
     An evaluator instance resolves via `get_name()` (its `name=` or class name); a class via

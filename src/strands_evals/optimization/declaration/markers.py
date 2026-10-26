@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
-# `default=` not given: `tunable` fills in the wrapped parameter's own default.
+from ...types.optimization import Value
+
+# `OneOf(default=)` not given: `None` can be an option, so `OneOf` needs its own sentinel.
 _UNSET: Any = object()
 
 
@@ -16,7 +18,7 @@ class Int:
     case under `build_task`'s `space=`, which has no function), declaration raises `TypeError`.
     """
 
-    def __init__(self, ge: int, le: int, *, default: int = _UNSET, log: bool = False):
+    def __init__(self, ge: int, le: int, *, default: int | None = None, log: bool = False):
         """Declare a tunable integer.
 
         Args:
@@ -38,7 +40,7 @@ class Float:
     raises `TypeError`.
     """
 
-    def __init__(self, ge: float, le: float, *, default: float = _UNSET, log: bool = False):
+    def __init__(self, ge: float, le: float, *, default: float | None = None, log: bool = False):
         """Declare a tunable float.
 
         Args:
@@ -60,7 +62,7 @@ class OneOf:
     option. A default that isn't one of the options raises `TypeError` at declaration.
     """
 
-    def __init__(self, *options: str | int | float | bool | None, default: Any = _UNSET):
+    def __init__(self, *options: str | int | float | bool | None, default: Value = _UNSET):
         """Declare a choice among plain values.
 
         Args:
@@ -80,7 +82,9 @@ class TextValue:
     raises `TypeError`.
     """
 
-    def __init__(self, *, default: str = _UNSET, size_cap: int | None = None, edit_instructions: str | None = None):
+    def __init__(
+        self, *, default: str | None = None, size_cap: int | None = None, edit_instructions: str | None = None
+    ):
         """Declare a tunable text.
 
         Args:

@@ -34,11 +34,11 @@ class TrialLog:
 
     setup_error: TypeError | None
 
-    def record(self, case: str, entry: TrialLogEntry) -> None:
+    def record(self, case_name: str, entry: TrialLogEntry) -> None:
         """Store one trial's entry; called by `instrument`.
 
         Args:
-            case: The case name.
+            case_name: The case name.
             entry: What the wrapper recorded for that case's trial.
         """
         raise NotImplementedError
@@ -50,13 +50,16 @@ class TrialLog:
 class TrialCache(Protocol):
     """Saved trials and reports; implemented by `record.RunDirectory`."""
 
-    def load(self, candidate_id: str, run_index: int, case: str) -> TrialRecord | None:
+    def load(self, candidate_id: str, run_index: int, case_name: str) -> TrialRecord | None:
         """Return a saved trial.
+
+        A saved `infrastructure_invalid` trial is returned too; `TrialRunner` treats it as not yet
+        run, so it is retried and overwritten.
 
         Args:
             candidate_id: The candidate.
             run_index: Which of `runs_per_candidate` runs.
-            case: The case name.
+            case_name: The case name.
 
         Returns:
             The saved trial, or None if it was never saved.
@@ -67,13 +70,16 @@ class TrialCache(Protocol):
     def save_report(
         self, candidate_id: str, split: SplitName, run_index: int, pass_index: int, report: EvaluationReport
     ) -> None:
-        """`pass_index` 0 = first pass, k = k-th re-run pass (at most `retries`).
+        """Save one `Experiment` call's report; never overwrites one.
+
+        `pass_index` counts the calls for this (split, run): 0 = the first, then one per re-run pass.
+        A trial retried after a resume continues from the highest saved index.
 
         Args:
             candidate_id: The candidate.
             split: The split the report covers.
             run_index: Which of `runs_per_candidate` runs.
-            pass_index: 0 for the first pass, k for the k-th re-run pass.
+            pass_index: 0 for the first call, then one more per later call for this (split, run).
             report: `Experiment`'s report for that pass.
         """
         ...
@@ -82,8 +88,8 @@ class TrialCache(Protocol):
 class TrialRunner:
     """Runs a candidate's uncached trials through a fresh `Experiment` per call.
 
-    `retries` caps the infrastructure re-run passes per call (D7); `Experiment` keeps its own throttling
-    retries inside each attempt.
+    `retries` caps the infrastructure re-run passes per call; this runner never retries inside a
+    trial, and `Experiment` keeps its own throttling retries inside each attempt.
     """
 
     def __init__(
@@ -110,12 +116,15 @@ class TrialRunner:
         """
         raise NotImplementedError
 
-    def pending(self, candidate_id: str, cases: Sequence[str], *, runs: int) -> int:
-        """Number of (case, run) trials with no saved record: the real cost of the first passes.
+    def pending(self, candidate_id: str, case_names: Sequence[str], *, runs: int) -> int:
+        """Number of (case, run) trials still to run: the real cost of the first passes.
+
+        Counts trials with no saved record and saved `infrastructure_invalid` ones, so a resumed run
+        with a larger budget retries what an exhausted allowance left unmeasured.
 
         Args:
             candidate_id: The candidate.
-            cases: The case names to score.
+            case_names: The case names to score.
             runs: Runs per case.
         """
         raise NotImplementedError
@@ -124,7 +133,7 @@ class TrialRunner:
         self,
         candidate_id: str,
         task: TaskFn,
-        cases: Sequence[str],
+        case_names: Sequence[str],
         *,
         runs: int,
         allowance: int,
@@ -132,7 +141,8 @@ class TrialRunner:
         """Score every run, then re-run infrastructure failures; returns (records, rollouts spent).
 
         Returns one record per requested (case, run), cached ones included, so `score()` sees the whole
-        candidate.
+        candidate. Saved `infrastructure_invalid` trials are not cache hits: they run again in the first
+        pass and count as rollouts.
 
         `task` is not yet instrumented (`make_task(...)` or the `build_task` path's task); each run wraps
         it with `instrument(task, TrialLog(), traces)`. After every run's first pass, up to `retries`
@@ -145,7 +155,7 @@ class TrialRunner:
         Args:
             candidate_id: The candidate.
             task: The candidate's task, not yet instrumented.
-            cases: The case names to score.
+            case_names: The case names to score.
             runs: Runs per case (`runs_per_candidate`).
             allowance: Rollouts left in the budget; caps only the re-run passes.
 

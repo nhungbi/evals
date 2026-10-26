@@ -17,6 +17,10 @@ def build_records(
 ) -> list[ReflectionRecord]:
     """The `max_records` worst train cases; `scores` is the parent's `SplitScores.train`.
 
+    A case with no completed run (every run an `agent_failure`) has no score and counts as worst,
+    ahead of every scored case, with `score=None` and the error as feedback. `infrastructure_invalid`
+    and `verifier_invalid` runs say nothing about the agent and are skipped.
+
     Args:
         records: The parent's trial records, filtered to split == "train".
         scores: The parent's train-split scores (`SplitScores.train`).

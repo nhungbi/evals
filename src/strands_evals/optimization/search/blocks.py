@@ -67,7 +67,9 @@ class Search:
 
         Variables in no block go to their type's default block (text/file -> one Reflection block,
         numbers/choices -> one TPE block), appended after the user's blocks, so `Search()` is the
-        default search. A variable in two blocks is an error; an automatic TPE block without optuna
-        raises `ImportError` naming the variable and the install command.
+        default search. A variable in two blocks, or one whose kind the block's method can't propose
+        (not in `method.kinds`, e.g. text given to `TPE`), raises `ValueError` naming the key and the
+        block. An automatic TPE block without optuna raises `ImportError` naming the variable and the
+        install command.
         """
         raise NotImplementedError

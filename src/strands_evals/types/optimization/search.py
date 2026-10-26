@@ -31,12 +31,16 @@ class Patch(BaseModel):
 
 
 class ReflectionRecord(BaseModel):
-    """One of the parent's worst train-split cases, as shown to a proposer."""
+    """One of the parent's worst train-split cases, as shown to a proposer.
+
+    `score` is None when no run of the case completed (every run an `agent_failure`); `feedback`
+    then carries the error instead of evaluator reasons.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     case: str
-    score: float
+    score: float | None
     input: str
     output: str
     feedback: list[str]
