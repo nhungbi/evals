@@ -44,7 +44,17 @@ class Candidate:
         raise NotImplementedError
 
     def child(self, space: Space, updates: Mapping[str, Value], *, origin: str, rationale: str) -> Candidate:
-        """Copy these values, apply `updates`, complete, and validate; `origin` is the block name."""
+        """Copy these values, apply `updates`, complete, and validate; `origin` is the block name.
+
+        Args:
+            space: Completes and validates the new values.
+            updates: The keys to change, from `Patch.updates`.
+            origin: The proposing block's name.
+            rationale: Why, from the patch.
+
+        Raises:
+            ValueError: The completed values fail `space.validate`.
+        """
         raise NotImplementedError
 
     @classmethod
@@ -55,4 +65,15 @@ class Candidate:
         parents: tuple[str, str],
         rationale: str,
     ) -> Candidate:
+        """A merge of two frontier members.
+
+        Args:
+            space: Validates the merged values.
+            values: The merged values, from `MergePlan.values`.
+            parents: The two parent ids.
+            rationale: Which variables came from which parent.
+
+        Raises:
+            ValueError: The merged values fail `space.validate`.
+        """
         raise NotImplementedError

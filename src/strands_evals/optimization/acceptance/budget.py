@@ -19,6 +19,12 @@ class BudgetTracker:
     remaining: int
 
     def __init__(self, budget: Budget, spent: int = 0):
+        """Start counting from `spent`.
+
+        Args:
+            budget: The run's limits.
+            spent: Rollouts already spent; on resume, summed from the `score` events.
+        """
         raise NotImplementedError
 
     def can_afford(self, rollouts: int) -> bool:

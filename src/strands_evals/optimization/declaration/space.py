@@ -65,6 +65,15 @@ class Space:
         raise NotImplementedError
 
     def is_active(self, key: str, values: Mapping[str, Value]) -> bool:
+        """Whether a key is active.
+
+        Args:
+            key: A flat key.
+            values: The candidate's values.
+
+        Returns:
+            Whether `key` is active under the alternatives chosen in `values`.
+        """
         raise NotImplementedError
 
     def complete(self, values: Mapping[str, Value]) -> dict[str, Value]:
@@ -76,5 +85,11 @@ class Space:
         raise NotImplementedError
 
     def resolve(self, name: str, values: Mapping[str, Value], workspace: Path | None) -> Any:
-        """What the factory receives for one declared name: a fresh component, a value, or a path."""
+        """What the factory receives for one declared name: a fresh component, a value, or a path.
+
+        Args:
+            name: A declared name, not a flat key.
+            values: The candidate's values.
+            workspace: The candidate's copy, or None when no value reaches the agent as a path.
+        """
         raise NotImplementedError

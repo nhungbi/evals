@@ -17,6 +17,17 @@ class Int:
     """
 
     def __init__(self, ge: int, le: int, *, default: int = _UNSET, log: bool = False):
+        """Declare a tunable integer.
+
+        Args:
+            ge: Smallest allowed value.
+            le: Largest allowed value.
+            default: The baseline value; omit to use the wrapped parameter's default.
+            log: Search on a log scale.
+
+        Raises:
+            TypeError: No default anywhere, or one outside `[ge, le]`.
+        """
         raise NotImplementedError
 
 
@@ -28,6 +39,17 @@ class Float:
     """
 
     def __init__(self, ge: float, le: float, *, default: float = _UNSET, log: bool = False):
+        """Declare a tunable float.
+
+        Args:
+            ge: Smallest allowed value.
+            le: Largest allowed value.
+            default: The baseline value; omit to use the wrapped parameter's default.
+            log: Search on a log scale.
+
+        Raises:
+            TypeError: No default anywhere, or one outside `[ge, le]`.
+        """
         raise NotImplementedError
 
 
@@ -39,6 +61,15 @@ class OneOf:
     """
 
     def __init__(self, *options: str | int | float | bool | None, default: Any = _UNSET):
+        """Declare a choice among plain values.
+
+        Args:
+            *options: The plain values to choose from.
+            default: The baseline value; omit to use the wrapped parameter's default, or the first option.
+
+        Raises:
+            TypeError: The default is not one of the options.
+        """
         raise NotImplementedError
 
 
@@ -50,6 +81,16 @@ class TextValue:
     """
 
     def __init__(self, *, default: str = _UNSET, size_cap: int | None = None, edit_instructions: str | None = None):
+        """Declare a tunable text.
+
+        Args:
+            default: The baseline text; omit to use the wrapped parameter's default.
+            size_cap: Max characters; None means `max(2000, 3 * len(default))`.
+            edit_instructions: Shown to the proposer next to this value.
+
+        Raises:
+            TypeError: No default anywhere.
+        """
         raise NotImplementedError
 
 
@@ -65,6 +106,13 @@ def component(factory: Callable[..., Any], /, **kwargs: Any) -> Component:
     """Declare one constructible alternative; `Int`/`Float` kwargs are tunable, others pass through.
 
     `factory` is positional-only, so a constructor kwarg named `factory` can still be passed.
+
+    Args:
+        factory: The class or callable to construct.
+        **kwargs: Constructor arguments; `Int` / `Float` markers among them are tunable.
+
+    Raises:
+        TypeError: The constructor rejects its own defaults (probed at declaration).
     """
     raise NotImplementedError
 
@@ -74,6 +122,13 @@ def choice(*alternatives: Component, labels: Sequence[str] | None = None) -> Cho
 
     Labels default to class names. The same class twice without labels is a `TypeError` at
     declaration. Labels must be unique and contain no dots (they become key segments).
+
+    Args:
+        *alternatives: From `component()`; the first is the baseline.
+        labels: One name per alternative, used in keys; defaults to class names.
+
+    Raises:
+        TypeError: The same class twice without labels, or duplicate or dotted labels.
     """
     raise NotImplementedError
 

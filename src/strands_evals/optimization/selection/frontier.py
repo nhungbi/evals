@@ -32,6 +32,10 @@ def case_frontier(scores: Mapping[str, Mapping[str, float]], cases: Sequence[str
     """Members and the cases each leads; exact ties share, older members win ties to join.
 
     `scores` maps candidate id -> case name -> score; the result maps member id -> cases it leads.
+
+    Args:
+        scores: Candidate id -> case name -> selection-split score.
+        cases: Every selection case name.
     """
     raise NotImplementedError
 
@@ -41,10 +45,20 @@ def cases_led(candidate_id: str, scores: Mapping[str, Mapping[str, float]], case
 
     `scores` maps candidate id -> case name -> score and includes the candidate. Used by `admit`
     for every strategy.
+
+    Args:
+        candidate_id: The candidate.
+        scores: Candidate id -> case name -> score, including the candidate.
+        cases: Every selection case name.
     """
     raise NotImplementedError
 
 
 def sample_parent(front: Mapping[str, frozenset[str]], rng: random.Random) -> str:
-    """Sample a member weighted by the number of cases it leads."""
+    """Sample a member weighted by the number of cases it leads.
+
+    Args:
+        front: Member id -> the cases it leads.
+        rng: The iteration's seeded RNG.
+    """
     raise NotImplementedError

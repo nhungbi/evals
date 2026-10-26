@@ -24,6 +24,13 @@ class Block:
     name: str
 
     def __init__(self, method: Method, *variables: str, name: str | None = None):
+        """Give `method` ownership of `variables`.
+
+        Args:
+            method: Proposes values for these variables.
+            *variables: Declared names or flat keys.
+            name: Stable block name; defaults to the method's class name.
+        """
         raise NotImplementedError
 
 
@@ -43,7 +50,16 @@ class Search:
     redraws: int
 
     def __init__(self, blocks: Sequence[Block] = (), *, schedule: Schedule | None = None, redraws: int = 3):
-        """Two blocks with the same name (e.g. two unnamed TPE blocks) raise `ValueError`."""
+        """Two blocks with the same name (e.g. two unnamed TPE blocks) raise `ValueError`.
+
+        Args:
+            blocks: The user's blocks, in turn order.
+            schedule: Which blocks propose each iteration; None means `Alternate()`.
+            redraws: Re-asks per block per iteration after an unusable proposal.
+
+        Raises:
+            ValueError: Two blocks share a name.
+        """
         raise NotImplementedError
 
     def resolve(self, space: Space) -> list[tuple[Block, list[str]]]:

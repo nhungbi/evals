@@ -92,10 +92,22 @@ def Minimize(target: str | MetricExpr) -> Objective:
 
 
 def AtMost(target: str | MetricExpr, bound: float) -> Constraint:
+    """A constraint that rejects when the mean exceeds `bound`.
+
+    Args:
+        target: A metric name or a `metric(...)` expression.
+        bound: The largest allowed mean.
+    """
     raise NotImplementedError
 
 
 def AtLeast(target: str | MetricExpr, bound: float) -> Constraint:
+    """A constraint that rejects when the mean falls below `bound`.
+
+    Args:
+        target: A metric name or a `metric(...)` expression.
+        bound: The smallest allowed mean.
+    """
     raise NotImplementedError
 
 
@@ -103,7 +115,16 @@ class Criteria:
     """The objective plus the constraints; names resolve through the registry at construction."""
 
     def __init__(self, objective: Objective | None, constraints: Sequence[Constraint], registry: MetricRegistry):
-        """`objective=None` means maximize the mean of every evaluator's score."""
+        """`objective=None` means maximize the mean of every evaluator's score.
+
+        Args:
+            objective: What to optimize; None means the mean of every evaluator's score.
+            constraints: Bounds that can only reject.
+            registry: Resolves the metric names.
+
+        Raises:
+            ValueError: A metric name is unknown or ambiguous.
+        """
         raise NotImplementedError
 
     def scalar(self, metrics: Mapping[str, float]) -> float | None:
@@ -122,5 +143,14 @@ def score(candidate_id: str, records: Sequence[TrialRecord], criteria: Criteria,
     """Group records by split and average per case.
 
     A run's scalar is measured only when its status is completed, so a crash never scores.
+
+    Args:
+        candidate_id: The candidate.
+        records: Its trial records on any splits.
+        criteria: Computes each run's scalar.
+        splits: The run's splits.
+
+    Returns:
+        One `CandidateScores` per split; a split not scored yet is empty.
     """
     raise NotImplementedError

@@ -14,7 +14,13 @@ class Schedule(ABC):
     """`turn` counts earlier proposing iterations; a merge iteration is not a turn."""
 
     @abstractmethod
-    def blocks_for(self, turn: int, blocks: Sequence[Block]) -> list[Block]: ...
+    def blocks_for(self, turn: int, blocks: Sequence[Block]) -> list[Block]:
+        """Which blocks propose this iteration.
+
+        Args:
+            turn: Earlier proposing iterations; a merge iteration is not a turn.
+            blocks: Every block, in order.
+        """
 
 
 class Joint(Schedule):

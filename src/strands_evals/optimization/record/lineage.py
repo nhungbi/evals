@@ -34,6 +34,12 @@ class Lineage:
         raise NotImplementedError
 
     def append(self, event: EventName, **fields: Any) -> None:
+        """Append one event as a JSON line.
+
+        Args:
+            event: The event name.
+            **fields: JSON-serializable event fields.
+        """
         raise NotImplementedError
 
     def read(self) -> list[dict[str, Any]]:

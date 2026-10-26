@@ -35,6 +35,12 @@ class TrialLog:
     setup_error: TypeError | None
 
     def record(self, case: str, entry: TrialLogEntry) -> None:
+        """Store one trial's entry; called by `instrument`.
+
+        Args:
+            case: The case name.
+            entry: What the wrapper recorded for that case's trial.
+        """
         raise NotImplementedError
 
     def records(self) -> dict[str, TrialLogEntry]:
@@ -44,14 +50,32 @@ class TrialLog:
 class TrialCache(Protocol):
     """Saved trials and reports; implemented by `record.RunDirectory`."""
 
-    def load(self, candidate_id: str, run_index: int, case: str) -> TrialRecord | None: ...
+    def load(self, candidate_id: str, run_index: int, case: str) -> TrialRecord | None:
+        """Return a saved trial.
+
+        Args:
+            candidate_id: The candidate.
+            run_index: Which of `runs_per_candidate` runs.
+            case: The case name.
+
+        Returns:
+            The saved trial, or None if it was never saved.
+        """
 
     def save(self, record: TrialRecord) -> None: ...
 
     def save_report(
         self, candidate_id: str, split: SplitName, run_index: int, pass_index: int, report: EvaluationReport
     ) -> None:
-        """`pass_index` 0 = first pass, k = k-th re-run pass (at most `retries`)."""
+        """`pass_index` 0 = first pass, k = k-th re-run pass (at most `retries`).
+
+        Args:
+            candidate_id: The candidate.
+            split: The split the report covers.
+            run_index: Which of `runs_per_candidate` runs.
+            pass_index: 0 for the first pass, k for the k-th re-run pass.
+            report: `Experiment`'s report for that pass.
+        """
         ...
 
 
@@ -73,10 +97,27 @@ class TrialRunner:
         max_workers: int,
         retries: int,
     ):
+        """Build the runner once per run.
+
+        Args:
+            cases: Every case of the run.
+            evaluators: The experiment's evaluators.
+            traces: The run's trace capture, installed before any `Experiment` is built.
+            cache: Saved trials and reports (the run directory).
+            split_of: Case name -> its split, given once so a record's split can't be wrong.
+            max_workers: Parallel trials within one candidate.
+            retries: Max infrastructure re-run passes per call.
+        """
         raise NotImplementedError
 
     def pending(self, candidate_id: str, cases: Sequence[str], *, runs: int) -> int:
-        """Number of (case, run) trials with no saved record: the real cost of the first passes."""
+        """Number of (case, run) trials with no saved record: the real cost of the first passes.
+
+        Args:
+            candidate_id: The candidate.
+            cases: The case names to score.
+            runs: Runs per case.
+        """
         raise NotImplementedError
 
     async def run(
@@ -100,5 +141,18 @@ class TrialRunner:
         `infrastructure_invalid`. A judge-only
         infrastructure failure re-runs just the judges on the saved output, for 0 rollouts. Each trial is
         saved as soon as it finishes.
+
+        Args:
+            candidate_id: The candidate.
+            task: The candidate's task, not yet instrumented.
+            cases: The case names to score.
+            runs: Runs per case (`runs_per_candidate`).
+            allowance: Rollouts left in the budget; caps only the re-run passes.
+
+        Returns:
+            One record per requested (case, run), cached ones included, and the rollouts spent.
+
+        Raises:
+            TypeError: A resource is named like a declared marker.
         """
         raise NotImplementedError

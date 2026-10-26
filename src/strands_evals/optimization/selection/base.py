@@ -65,6 +65,11 @@ class Selection(ABC):
 
         Which cases it leads doesn't depend on the strategy, so the optimizer computes that itself
         (`cases_led`).
+
+        Args:
+            candidate_id: The candidate.
+            scores: Case name -> its selection-split score.
+            ctx: The pool as selection sees it, without the candidate.
         """
 
     def config(self) -> dict[str, Any]:

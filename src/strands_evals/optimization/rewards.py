@@ -27,6 +27,13 @@ class RewardFunctionEvaluator(Evaluator[InputT, OutputT]):
     """Adapts a `RewardFunction` into an `Evaluator`; the reason falls back to `f"reward_value={score}"`."""
 
     def __init__(self, reward: RewardFunction, *, pass_threshold: float = 1.0, name: str | None = None):
+        """Wrap `reward` as an evaluator.
+
+        Args:
+            reward: The reward function to adapt.
+            pass_threshold: `test_pass` is `reward_value >= pass_threshold`.
+            name: The evaluator name; defaults to the class name.
+        """
         raise NotImplementedError
 
     def evaluate(self, evaluation_case: EvaluationData[InputT, OutputT]) -> list[EvaluationOutput]:

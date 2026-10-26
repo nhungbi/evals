@@ -21,7 +21,12 @@ class RunDirectory:
 
     @classmethod
     def create(cls, base_dir: Path, config: Mapping[str, Any]) -> RunDirectory:
-        """Write `config` as the first lineage event and as `run.json`."""
+        """Write `config` as the first lineage event and as `run.json`.
+
+        Args:
+            base_dir: The parent of all run directories.
+            config: The run's config, as compared on resume.
+        """
         raise NotImplementedError
 
     @classmethod

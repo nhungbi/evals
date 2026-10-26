@@ -58,6 +58,13 @@ class TunableFactory:
         `bind()` call, deleted when the bound factory is garbage-collected. The bound factory takes
         resource kwargs, each passed only if the user's function declares it; a kwarg named like a
         declared marker raises `_ResourceConflictError`.
+
+        Args:
+            values: The candidate's values.
+            workspace: Where to write the candidate's file copy; None outside a run.
+
+        Returns:
+            A factory that builds fresh components on every call and takes resource kwargs.
         """
         raise NotImplementedError
 
@@ -78,5 +85,15 @@ def tunable(
     A marker naming no parameter of `fn` (unless `fn` takes `**kwargs`) raises `TypeError`. A marker
     without `default=` takes the parameter's own default, so `fn()` and the baseline build the same
     agent; a marker with neither raises `TypeError`.
+
+    Args:
+        fn: The factory; omit when used as a decorator.
+        **kwargs: `inject={name: marker}` when `fn` is given, otherwise the markers themselves.
+
+    Returns:
+        A `TunableFactory`, or a decorator returning one.
+
+    Raises:
+        TypeError: A marker names no parameter, or has no default anywhere.
     """
     raise NotImplementedError

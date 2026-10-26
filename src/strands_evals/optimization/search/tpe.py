@@ -20,6 +20,12 @@ class TPE(Method):
     kinds: ClassVar[frozenset[ParamKind]] = frozenset({"int", "float", "one_of", "choice"})
 
     def __init__(self, *, seed: int | None = None, n_startup_trials: int = 4):
+        """Configure the sampler; studies are created per context on first use.
+
+        Args:
+            seed: None derives it from the run seed.
+            n_startup_trials: Random trials before TPE models the results.
+        """
         raise NotImplementedError
 
     async def propose(self, request: ProposalRequest) -> list[Patch]:

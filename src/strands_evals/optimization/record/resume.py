@@ -49,5 +49,15 @@ def load_state(run: RunDirectory, *, config: Mapping[str, Any]) -> ResumeState:
 
     A mismatch raises `ValueError` naming the field. Budget, `max_workers`, and `on_iteration` may
     differ.
+
+    Args:
+        run: The reopened run directory.
+        config: The resumed optimizer's config, built by the code that wrote `run.json`.
+
+    Returns:
+        The state up to the last `iteration_end` event.
+
+    Raises:
+        ValueError: A field that may not change differs, naming the field.
     """
     raise NotImplementedError

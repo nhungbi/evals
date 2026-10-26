@@ -34,7 +34,15 @@ class TraceCapture:
         raise NotImplementedError
 
     def agent_view(self, trace_id: int, attempt_span_id: int) -> tuple[Session | None, Usage]:
-        """The `Session` and usage of the given attempt's subtree, judge spans excluded."""
+        """The `Session` and usage of the given attempt's subtree, judge spans excluded.
+
+        Args:
+            trace_id: The trial's trace.
+            attempt_span_id: The last attempt's span; only its subtree is read.
+
+        Returns:
+            The agent's `Session` (None without agent spans) and its usage, judge spans excluded.
+        """
         raise NotImplementedError
 
     def evaluator_view(self, trace_id: int) -> EvaluatorView:

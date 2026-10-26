@@ -25,5 +25,17 @@ def admit(
     `min_coverage` = `gate.min_coverage`), then `selection.admits`. The first two always run, so a
     custom `Selection` can't skip them. `Admission.cases_led` comes from `selection.frontier.cases_led`
     over `ctx.scores` plus the candidate, whatever the strategy.
+
+    Args:
+        candidate: The candidate's selection-split scores.
+        parent: The parent's selection-split scores; for a merge, the union of both parents' cases.
+        selection_cases: Every selection case name.
+        criteria: Checks the constraints on the selection split.
+        selection: The strategy, asked last.
+        ctx: The pool as selection sees it.
+        min_coverage: `gate.min_coverage`.
+
+    Returns:
+        `admitted`, `infeasible` (a constraint or coverage failed), or `dominated` (the strategy said no).
     """
     raise NotImplementedError

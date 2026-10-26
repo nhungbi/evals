@@ -18,6 +18,13 @@ class CandidateView:
     """A candidate as the results show it; built by the optimizer, never by users."""
 
     def __init__(self, candidate: Candidate, baseline: Candidate, space: Space):
+        """Built by the optimizer; users never construct one.
+
+        Args:
+            candidate: The candidate shown.
+            baseline: The run's baseline, for diffs.
+            space: Maps file-backed keys to their real paths.
+        """
         raise NotImplementedError
 
     @property
@@ -71,7 +78,12 @@ class OptimizationResult:
         raise NotImplementedError
 
     def to_file(self, path: str | Path, grain: Grain = "proposal") -> None:
-        """Write `to_json(grain)` to `path`."""
+        """Write `to_json(grain)` to `path`.
+
+        Args:
+            path: The JSON file to write.
+            grain: One row per iteration, proposal, or case.
+        """
         raise NotImplementedError
 
     def candidate(self, candidate_id: str) -> CandidateView:

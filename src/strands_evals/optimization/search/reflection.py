@@ -32,6 +32,14 @@ class Reflection(Method):
         max_records: int = 8,
         history: int = 5,
     ):
+        """Configure the proposer agent.
+
+        Args:
+            model: The proposer's model; None means the repo's default Bedrock model.
+            system_prompt: Replaces the default prompt.
+            max_records: Worst train cases shown per proposal.
+            history: Own past attempts shown in the prompt; 0 turns that off.
+        """
         raise NotImplementedError
 
     async def propose(self, request: ProposalRequest) -> list[Patch]:
