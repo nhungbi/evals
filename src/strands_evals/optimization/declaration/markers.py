@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Any
 
 from ...types.optimization import Value
@@ -121,18 +121,20 @@ def component(factory: Callable[..., Any], /, **kwargs: Any) -> Component:
     raise NotImplementedError
 
 
-def choice(*alternatives: Component, labels: Sequence[str] | None = None) -> Choice:
-    """Declare a swap between components.
+def choice(*alternatives: Component, **labeled: Component) -> Choice:
+    """Declare a swap between components; the first alternative is the baseline.
 
-    Labels default to class names. The same class twice without labels is a `TypeError` at
-    declaration. Labels must be unique and contain no dots (they become key segments).
+    Pass them positionally, labeled by class name, or by keyword, labeled by the keyword:
+    `choice(window=component(...), summary=component(...))`. The keyword form is needed when the same
+    class appears twice. Labels become key segments, so they contain no `.` or `/`.
 
     Args:
-        *alternatives: From `component()`; the first is the baseline.
-        labels: One name per alternative, used in keys; defaults to class names.
+        *alternatives: From `component()`, labeled by class name.
+        **labeled: From `component()`, labeled by keyword.
 
     Raises:
-        TypeError: The same class twice without labels, or duplicate or dotted labels.
+        TypeError: No alternatives, positional and keyword alternatives mixed, the same class twice
+            positionally, or a label with `.` or `/`.
     """
     raise NotImplementedError
 
