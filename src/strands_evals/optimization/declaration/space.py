@@ -52,14 +52,17 @@ class ParamInfo:
 
 
 class Space:
-    """Flattens markers into dotted keys and knows which keys are active under which values."""
+    """Flattens markers into dotted keys and knows which keys are active under which values.
+
+    `values` is a candidate's values: flat key -> typed value, e.g.
+    `{"manager": "Window", "manager.Window.size": 40}`.
+    """
 
     def __init__(self, markers: Mapping[str, Marker]):
         """Flatten the markers into typed keys; raises `TypeError`.
 
-        Components were already probed by `component()`. A bare `component(...)` is a choice with one
-        alternative. Every default must be a valid value of its own key, so the baseline always passes
-        `validate`.
+        A bare `component(...)` is a choice with one alternative. Every default must be a valid value
+        of its own key, so the baseline always passes `validate`.
 
         Raises:
             TypeError: No markers, a name that can't be a key, an unknown marker type, a marker
@@ -122,8 +125,7 @@ class Space:
         """
         completed: dict[str, Value] = {}
         for key, info in self._params.items():
-            # A choice precedes its sub-keys, so `completed` already holds the choices they depend on.
-            if self.is_active(key, {**completed, **values}):
+            if self.is_active(key, values):
                 completed[key] = values[key] if key in values else info.default
         completed.update({key: value for key, value in values.items() if key not in self._params})
         return completed
@@ -152,16 +154,22 @@ class Space:
             raise ValueError("invalid values: " + "; ".join(problems))
 
     def resolve(self, name: str, values: Mapping[str, Value], workspace: Path | None) -> Any:
-        """What the factory receives for one declared name: a fresh component, a value, or a path.
+        """Turn a candidate's values into the argument the factory gets for one declared name.
 
-        Components and tool copies are built fresh on every call; a component's fixed arguments are
-        passed as is, so those objects are shared (see `component()`). `values` must already pass
-        `validate` (so no key is missing); nothing is checked here.
+        - A choice or component: a new instance of the chosen component, e.g. `Summary(ratio=0.5)`.
+        - `tool_descriptions`: new copies of the tools with the candidate's descriptions.
+        - Any other marker: the value itself, e.g. `0.2` or the prompt text.
+
+        Instances and tool copies are new on every call, so no two agents share them. A component's
+        fixed arguments are the exception: they are passed as is (see `component()`).
+
+        `values` must already pass `validate`; nothing is checked here.
 
         Args:
-            name: A declared name, not a flat key.
+            name: A declared name (`"manager"`), not a flat key (`"manager.Summary.ratio"`).
             values: The candidate's values, already validated.
-            workspace: The candidate's copy, or None when no value reaches the agent as a path.
+            workspace: The candidate's copy of its files, or None when no value reaches the agent
+                as a path.
         """
         if name not in self._markers:
             raise KeyError(f"{name!r} is not a declared name; declared: {list(self._markers)}")

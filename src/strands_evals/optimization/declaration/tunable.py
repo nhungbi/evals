@@ -23,8 +23,7 @@ _KEYWORD_KINDS = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEY
 class BuildContext:
     """What `Optimizer(build_task=...)` receives, once per candidate.
 
-    A dataclass, not a record: it holds a callable and is never saved. New fields may be added
-    later without breaking existing `build_task` functions.
+    Never saved. Fields may be added later; `build_task` functions keep working.
 
     Attributes:
         values: The candidate's typed flat values.
@@ -55,22 +54,34 @@ class TunableFactory:
 
     def __init__(self, fn: Callable[..., Any], markers: Mapping[str, Marker]):
         """Check the declared names against `fn` and build the space; raises `TypeError`."""
+        if isinstance(fn, TunableFactory):
+            raise TypeError(f"{fn._label} is already tunable; declare every marker in one tunable(...)")
         if not callable(fn):
             raise TypeError(f"tunable() needs a function, got {fn!r}")
-        parameters = inspect.signature(fn).parameters
         self._fn = fn
+        self._signature = inspect.signature(fn)
+        # Not every callable has a __name__ (functools.partial); used in error messages and logs.
+        self._label: str = getattr(fn, "__name__", repr(fn))
         self._names = tuple(markers)
+        parameters = self._signature.parameters
         self._accepted = frozenset(name for name, p in parameters.items() if p.kind in _KEYWORD_KINDS)
-        self.space = Space(_fill_defaults(markers, fn, parameters))
+        self.space = Space(_fill_defaults(markers, self._label, parameters))
         self._baseline = self.space.complete({})
-        functools.update_wrapper(self, fn)
+        # updated=(): copying fn.__dict__ could overwrite this factory's own attributes.
+        functools.update_wrapper(self, fn, updated=())
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Build the baseline (every value at its default); never copies files.
 
-        Arguments passed here win over the declared values, as in a plain call of the function.
+        Arguments passed here, by position or by keyword, win over the declared values, as in a
+        plain call of the function.
         """
-        resolved = {name: self.space.resolve(name, self._baseline, None) for name in self._names if name not in kwargs}
+        given = self._signature.bind_partial(*args, **kwargs).arguments
+        resolved = {
+            name: self.space.resolve(name, self._baseline, None)
+            for name in self._names
+            if name not in given and name not in kwargs  # a name caught by **kwargs is only in kwargs
+        }
         return self._fn(*args, **kwargs, **resolved)
 
     def validate(self, values: Mapping[str, Value]) -> None:
@@ -80,14 +91,18 @@ class TunableFactory:
     def bind(self, values: Mapping[str, Value], *, workspace: Path | None = None) -> Callable[..., Any]:
         """Return a factory that builds fresh components with `values` bound on every call.
 
-        Missing keys take their defaults, but nothing is dropped: a key inactive under the chosen
-        alternatives is an error, not silently ignored. Validated here, before any agent is built.
+        Pass only the keys you change; the rest take their defaults. A key that doesn't apply under
+        the chosen alternatives (e.g. a window size while the summarizing manager is chosen) raises
+        `ValueError` instead of being ignored. Everything is checked here, before any agent is built.
 
-        Copies files only if an active value reaches the agent as a path (`as_path=True`,
-        `SkillLibrary`): into `workspace` (cached), or with `workspace=None` into one temp folder per
-        `bind()` call, deleted when the bound factory is garbage-collected. The bound factory takes
-        resource kwargs, each passed only if the user's function declares it by name (`**kwargs`
-        doesn't count); a kwarg named like a declared marker raises `_ResourceConflictError`.
+        Files are copied only when a value reaches the agent as a path (`as_path=True`,
+        `SkillLibrary`). The copy goes into `workspace` (made once, then reused), or, with
+        `workspace=None`, into a temp folder made for this `bind()` call and deleted once the
+        bound factory is garbage-collected.
+
+        The bound factory takes resources as keyword arguments, e.g. `bound(sandbox=sb)`. Each is
+        passed on only if the user's function names that parameter (`**kwargs` doesn't count). A
+        resource named like a declared marker raises `_ResourceConflictError`.
 
         Args:
             values: The candidate's values.
@@ -106,12 +121,12 @@ class TunableFactory:
             conflicts = sorted(name for name in resources if name in self._names)
             if conflicts:
                 raise _ResourceConflictError(
-                    f"resources {conflicts} are named like declared markers of {self.__name__}; rename them"
+                    f"resources {conflicts} are named like declared markers of {self._label}; rename them"
                 )
             passed = {name: value for name, value in resources.items() if name in self._accepted}
             dropped = sorted(set(resources) - set(passed))
             if dropped:
-                logger.debug("factory=<%s>, resources=<%s> | factory does not declare them", self.__name__, dropped)
+                logger.debug("factory=<%s>, resources=<%s> | factory does not declare them", self._label, dropped)
             resolved = {name: self.space.resolve(name, bound_values, workspace) for name in self._names}
             return self._fn(**resolved, **passed)
 
@@ -163,11 +178,10 @@ def tunable(
 
 
 def _fill_defaults(
-    markers: Mapping[str, Marker], fn: Callable[..., Any], parameters: Mapping[str, inspect.Parameter]
+    markers: Mapping[str, Marker], fn_name: str, parameters: Mapping[str, inspect.Parameter]
 ) -> dict[str, Marker]:
-    """Check each name against `fn`; a marker without `default=` takes the parameter's default."""
+    """Check each name against the function's parameters; a marker without `default=` takes the parameter's."""
     takes_kwargs = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
-    fn_name = getattr(fn, "__name__", repr(fn))
     filled: dict[str, Marker] = {}
     for name, marker in markers.items():
         parameter = parameters.get(name)
@@ -183,11 +197,17 @@ def _fill_defaults(
 
 
 def _with_parameter_default(name: str, marker: Marker, default: Any) -> Marker:
-    if isinstance(marker, (Int, Float, TextValue)) and marker.default is None:
-        if default is None:
-            raise TypeError(f"{name}: the parameter's default is None; pass default= to {type(marker).__name__}")
-    elif not (isinstance(marker, OneOf) and marker.default is _UNSET):
+    """`marker` with the parameter's `default` filled in, if the marker has none; raises `TypeError`."""
+    if not isinstance(marker, (Int, Float, OneOf, TextValue)):
+        return marker  # components, choices, and tools take no parameter default
+    if isinstance(marker, OneOf):
+        # OneOf marks "no default" with _UNSET, because None can be one of its options.
+        if marker.default is not _UNSET:
+            return marker
+    elif marker.default is not None:
         return marker
+    elif default is None:
+        raise TypeError(f"{name}: the parameter's default is None; pass default= to {type(marker).__name__}")
     try:
         return marker._with_default(default)
     except TypeError as error:

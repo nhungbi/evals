@@ -79,3 +79,10 @@ def test_a_tool_without_a_tool_spec_setter_fails_at_declaration():
 def test_bad_declarations_fail(make):
     with pytest.raises(TypeError):
         make()
+
+
+@pytest.mark.parametrize("name", ["db.lookup", "db/lookup"])
+def test_a_tool_name_that_cant_be_a_key_segment_fails(name):
+    spec = {"name": name, "description": "Look up.", "inputSchema": {"json": {}}}
+    with pytest.raises(TypeError, match="key segments"):
+        tool_descriptions(PythonAgentTool(name, spec, lambda tool_use, **kwargs: None))

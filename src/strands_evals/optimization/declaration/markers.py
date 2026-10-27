@@ -13,7 +13,11 @@ from ...types.optimization import Value
 _UNSET: Any = object()
 
 
-class Int:
+class _Marker:
+    """Base of every marker, so `component()` can reject the ones it can't tune."""
+
+
+class Int(_Marker):
     """An integer argument with inclusive bounds; the default must lie in `[ge, le]`."""
 
     def __init__(self, ge: int, le: int, *, default: int | None = None, log: bool = False):
@@ -40,7 +44,7 @@ class Int:
         return Int(self.ge, self.le, default=default, log=self.log)
 
 
-class Float:
+class Float(_Marker):
     """A float argument with inclusive bounds; the default must lie in `[ge, le]`."""
 
     def __init__(self, ge: float, le: float, *, default: float | None = None, log: bool = False):
@@ -68,7 +72,7 @@ class Float:
         return Float(self.ge, self.le, default=default, log=self.log)
 
 
-class OneOf:
+class OneOf(_Marker):
     """A choice among plain values; the default must be one of the options."""
 
     def __init__(self, *options: Value, default: Value = _UNSET):
@@ -102,7 +106,7 @@ class OneOf:
         return OneOf(*self.options, default=default)
 
 
-class TextValue:
+class TextValue(_Marker):
     """A text knob; `size_cap` rejects prompt bloat (default: `max(2000, 3 * len(default))`)."""
 
     def __init__(
@@ -130,7 +134,7 @@ class TextValue:
         return TextValue(default=default, size_cap=self.size_cap, edit_instructions=self.edit_instructions)
 
 
-class Component:
+class Component(_Marker):
     """One constructible alternative, returned by `component()`.
 
     Create it with `component()`, which fills defaults and test-builds it; constructing it directly
@@ -154,7 +158,7 @@ class Component:
         return self.factory(**self.fixed, **values)
 
 
-class Choice:
+class Choice(_Marker):
     """A swap between components, returned by `choice()`; the first alternative is the baseline.
 
     Create it with `choice()`, which checks the labels; constructing it directly skips that.
@@ -193,7 +197,7 @@ def component(factory: Callable[..., Any], /, **kwargs: Any) -> Component:
     for key, value in kwargs.items():
         if isinstance(value, (Int, Float)):
             result.tunable[key] = _with_constructor_default(name, key, value, parameters)
-        elif isinstance(value, (OneOf, TextValue, Component, Choice)):
+        elif isinstance(value, _Marker):
             raise TypeError(
                 f"component({name}): {key}= is a {type(value).__name__}; only Int and Float arguments are tunable"
             )
@@ -256,14 +260,9 @@ def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _is_number(value: Any) -> bool:
-    """Whether `value` is an int or float, excluding `bool`."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
 def _is_finite_number(value: Any) -> bool:
     """Whether `value` is a finite int or float, excluding `bool`; NaN would slip past every range check."""
-    return _is_number(value) and math.isfinite(value)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _check_number(

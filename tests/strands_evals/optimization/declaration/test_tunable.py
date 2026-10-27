@@ -1,3 +1,4 @@
+import functools
 import inspect
 
 import pytest
@@ -84,6 +85,16 @@ def test_the_plain_call_lets_explicit_arguments_win():
     assert make_agent(prompt="Override.")["prompt"] == "Override."
 
 
+def test_the_plain_call_lets_positional_arguments_win():
+    built = make_agent(Summary(), "Override.")
+    assert isinstance(built["manager"], Summary) and built["prompt"] == "Override."
+
+
+def test_the_plain_call_lets_a_name_caught_by_kwargs_win():
+    factory = tunable(lambda **kwargs: kwargs, inject={"effort": OneOf("low", "high")})
+    assert factory(effort="high") == {"effort": "high"}
+
+
 def test_one_of_without_any_default_takes_the_first_option():
     factory = tunable(lambda effort: effort, inject={"effort": OneOf("low", "high")})
     assert factory() == "low"
@@ -105,6 +116,15 @@ def test_a_marker_naming_no_parameter_fails():
 def test_a_function_taking_kwargs_accepts_any_name():
     factory = tunable(lambda **kwargs: kwargs, inject={"extra": Int(1, 5, default=2)})
     assert factory() == {"extra": 2}
+
+
+def test_stacking_tunable_fails_instead_of_dropping_markers():
+    with pytest.raises(TypeError, match="already tunable"):
+
+        @tunable(a=Int(1, 9))
+        @tunable(b=Int(1, 9))
+        def build(a=1, b=2):
+            return a, b
 
 
 def test_a_positional_only_parameter_fails():
@@ -186,6 +206,16 @@ def test_a_resource_named_like_a_marker_is_a_setup_error():
     with pytest.raises(_ResourceConflictError, match="prompt"):
         make_agent.bind({})(prompt="clash")
     assert issubclass(_ResourceConflictError, TypeError)
+
+
+def test_a_factory_without_a_name_takes_resources():
+    def build(model, prompt="hi", sandbox=None):
+        return model, prompt, sandbox
+
+    factory = tunable(functools.partial(build, "model"), inject={"prompt": TextValue()})
+    assert factory.bind({})(sandbox="box", unrelated="dropped") == ("model", "hi", "box")
+    with pytest.raises(_ResourceConflictError, match="functools.partial"):
+        factory.bind({})(prompt="clash")
 
 
 # --- a real component swap ---

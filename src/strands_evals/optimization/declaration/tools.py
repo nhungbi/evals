@@ -8,10 +8,10 @@ from typing import Any
 
 from strands.types.tools import AgentTool
 
-from .markers import _check_size_cap
+from .markers import _check_size_cap, _Marker
 
 
-class ToolDescriptions:
+class ToolDescriptions(_Marker):
     """One text param per tool (key `name.<tool_name>`), returned by `tool_descriptions()`.
 
     Attributes:
@@ -38,11 +38,9 @@ class ToolDescriptions:
 def tool_descriptions(*tools: AgentTool, size_cap: int = 800, edit_instructions: str | None = None) -> ToolDescriptions:
     """Declare each tool's top-level description as editable text.
 
-    The baseline is the tool's current `tool_spec["description"]`. Every build gets
-    `copy.copy(tool)` with the public `tool_spec` setter, so the user's tool is never modified.
-    Tools without a `tool_spec` setter (`MCPAgentTool`, bare `AgentTool`) raise `TypeError` at
-    declaration. `size_cap` defaults to 800 rather than the text markers' derived cap, because tool
-    descriptions are short and every model call carries all of them.
+    The baseline is each tool's current description. Each build gets a copy of each tool with the
+    candidate's description; the user's tools are never changed. `size_cap` defaults to 800 because
+    every model call carries every description.
 
     Args:
         *tools: The tools whose descriptions may change.
@@ -50,7 +48,8 @@ def tool_descriptions(*tools: AgentTool, size_cap: int = 800, edit_instructions:
         edit_instructions: Shown to the proposer next to every description.
 
     Raises:
-        TypeError: A tool has no `tool_spec` setter.
+        TypeError: A tool has no `tool_spec` setter (`MCPAgentTool`, bare `AgentTool`), no text
+            description, a name with `.` or `/`, or the same name as another tool.
     """
     if not tools:
         raise TypeError("tool_descriptions() needs at least one tool")
@@ -66,8 +65,8 @@ def tool_descriptions(*tools: AgentTool, size_cap: int = 800, edit_instructions:
                 "can't be changed; use a @tool function or a PythonAgentTool"
             )
         name = tool.tool_name
-        if "." in name:
-            raise TypeError(f"tool name {name!r} contains a dot; tool names become key segments")
+        if "." in name or "/" in name:
+            raise TypeError(f"tool name {name!r} contains '.' or '/'; tool names become key segments")
         if name in by_name:
             raise TypeError(f"tool_descriptions() got two tools named {name!r}")
         if not isinstance(tool.tool_spec.get("description"), str):

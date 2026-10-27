@@ -1,6 +1,7 @@
 import pytest
+from strands import tool
 
-from strands_evals.optimization import Float, Int, OneOf, TextValue, choice, component
+from strands_evals.optimization import Float, Int, OneOf, TextValue, choice, component, tool_descriptions
 from strands_evals.optimization.declaration.markers import _default_size_cap
 
 
@@ -184,7 +185,21 @@ def test_component_constructor_default_outside_the_bounds_fails():
         component(Manager, window_size=Int(1, 10))
 
 
-@pytest.mark.parametrize("marker", [OneOf("a", "b"), TextValue(default="x")])
+@tool
+def lookup(query: str) -> str:
+    """Look up a record."""
+    return query
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        OneOf("a", "b"),
+        TextValue(default="x"),
+        tool_descriptions(lookup),
+        choice(component(OtherManager)),
+    ],
+)
 def test_component_rejects_markers_other_than_int_and_float(marker):
     with pytest.raises(TypeError, match="only Int and Float"):
         component(Manager, factory=marker)
