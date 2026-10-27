@@ -31,15 +31,17 @@ class Patch(BaseModel):
 
 
 class ReflectionRecord(BaseModel):
-    """One of the parent's worst train-split cases, as shown to a proposer.
+    """One of the parent's train-split cases, as shown to a proposer: among its worst or its best.
 
-    `score` is None when no run of the case completed (every run an `agent_failure`); `feedback`
-    then carries the error instead of evaluator reasons.
+    `group` is relative to the parent (its worst cases are `failing`, its best `passing`), so the
+    prompt shows `score` too. `score` is None when no run of the case completed (every run an
+    `agent_failure`); `feedback` then carries the error instead of evaluator reasons.
     """
 
     model_config = ConfigDict(frozen=True)
 
     case: str
+    group: Literal["failing", "passing"]
     score: float | None
     input: str
     output: str

@@ -1,4 +1,4 @@
-"""The parent's worst train-split cases, rendered for a proposer."""
+"""The parent's worst and best train-split cases, rendered for a proposer."""
 
 from __future__ import annotations
 
@@ -15,17 +15,21 @@ def build_records(
     *,
     max_records: int = 8,
 ) -> list[ReflectionRecord]:
-    """The `max_records` worst train cases; `scores` is the parent's `SplitScores.train`.
+    """The parent's worst train cases as `failing` and its best as `passing`, worst first.
 
-    A case with no completed run (every run an `agent_failure`) has no score and counts as worst,
-    ahead of every scored case, with `score=None` and the error as feedback. `infrastructure_invalid`
-    and `verifier_invalid` runs say nothing about the agent and are skipped.
+    Cases are ranked by the parent's per-case objective (ties in `train_cases` order). With
+    `k = min(max_records, cases ranked)`, the worst `ceil(k / 2)` are `failing` and the best
+    `floor(k / 2)` are `passing`; no case is in both. Ranking, not a pass threshold, so it works for
+    any objective, usage terms included. A case with no completed run (every run an
+    `agent_failure`) has no score and counts as worst, ahead of every scored case, never `passing`,
+    with `score=None` and the error as feedback. `infrastructure_invalid` and `verifier_invalid` runs
+    say nothing about the agent and are skipped.
 
     Args:
         records: The parent's trial records, filtered to split == "train".
         scores: The parent's train-split scores (`SplitScores.train`).
         train_cases: Every train case name.
-        max_records: How many of the worst cases to keep.
+        max_records: How many cases to show in total, split between the two groups.
     """
     raise NotImplementedError
 
