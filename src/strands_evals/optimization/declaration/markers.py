@@ -144,18 +144,28 @@ class Component(_Marker):
         factory: The class or callable to construct.
         fixed: Constructor arguments passed through unchanged: the same objects go to every build.
         tunable: `Int` / `Float` constructor arguments, each with a default.
-        label: The default label in keys: the factory's name.
+        label: Its label in keys: the factory's name, or the keyword `choice()` gave it.
     """
 
-    def __init__(self, factory: Callable[..., Any], fixed: dict[str, Any], tunable: dict[str, Int | Float]):
+    def __init__(
+        self,
+        factory: Callable[..., Any],
+        fixed: dict[str, Any],
+        tunable: dict[str, Int | Float],
+        label: str | None = None,
+    ):
         self.factory = factory
         self.fixed = fixed
         self.tunable = tunable
-        self.label: str = getattr(factory, "__name__", type(factory).__name__)
+        self.label: str = label if label is not None else getattr(factory, "__name__", type(factory).__name__)
 
     def build(self, values: dict[str, Any]) -> Any:
         """Construct a fresh instance with `values` for the tunable arguments, through the real constructor."""
         return self.factory(**self.fixed, **values)
+
+    def _labeled(self, label: str) -> Component:
+        """A copy carrying `label`; a copy, because one component may sit in several choices."""
+        return Component(self.factory, self.fixed, self.tunable, label)
 
 
 class Choice(_Marker):
@@ -164,7 +174,7 @@ class Choice(_Marker):
     Create it with `choice()`, which checks the labels; constructing it directly skips that.
 
     Attributes:
-        alternatives: Label -> component, in declaration order.
+        alternatives: Label -> component, in declaration order; each component's `label` is its key.
     """
 
     def __init__(self, alternatives: dict[str, Component]):
@@ -210,39 +220,39 @@ def component(factory: Callable[..., Any], /, **kwargs: Any) -> Component:
     return result
 
 
-def choice(*alternatives: Component, labels: Sequence[str] | None = None) -> Choice:
-    """Declare a swap between components.
+def choice(*alternatives: Component, **labeled: Component) -> Choice:
+    """Declare a swap between components; the first alternative is the baseline.
 
-    Labels default to class names. The same class twice without labels is a `TypeError` at
-    declaration. Labels must be unique and contain no `.` or `/` (they become key segments, like
-    declared names).
+    Pass them positionally, labeled by class name, or by keyword, labeled by the keyword:
+    `choice(window=component(...), summary=component(...))`. The keyword form is needed when the same
+    class appears twice. Labels become key segments, so they contain no `.` or `/`. Each component in
+    the result is a copy carrying its label, so one component can sit in several choices.
 
     Args:
-        *alternatives: From `component()`; the first is the baseline.
-        labels: One name per alternative, used in keys; defaults to class names.
+        *alternatives: From `component()`, labeled by class name.
+        **labeled: From `component()`, labeled by keyword.
 
     Raises:
-        TypeError: The same class twice without labels, or duplicate labels, or labels with `.` or `/`.
+        TypeError: No alternatives, positional and keyword alternatives mixed, the same class twice
+            positionally, or a label with `.` or `/`.
     """
-    if not alternatives:
+    if alternatives and labeled:
+        raise TypeError("choice() takes alternatives either positionally or by keyword, not both")
+    pairs = list(labeled.items()) if labeled else [(getattr(a, "label", ""), a) for a in alternatives]
+    if not pairs:
         raise TypeError("choice() needs at least one component")
-    for alternative in alternatives:
+    for _, alternative in pairs:
         if not isinstance(alternative, Component):
             raise TypeError(f"choice() takes component(...) alternatives, got {type(alternative).__name__}")
-    if labels is None:
-        names = [alternative.label for alternative in alternatives]
-        if len(set(names)) != len(names):
-            raise TypeError(f"choice() has the same class twice ({names}); pass labels=[...] to tell them apart")
-    else:
-        names = list(labels)
-        if len(names) != len(alternatives):
-            raise TypeError(f"choice() got {len(alternatives)} alternatives but {len(names)} labels")
-        for label in names:
-            if not isinstance(label, str) or not label or "." in label or "/" in label:
-                raise TypeError(f"choice() labels must be non-empty strings without '.' or '/', got {label!r}")
-        if len(set(names)) != len(names):
-            raise TypeError(f"choice() labels must be unique, got {names}")
-    return Choice(dict(zip(names, alternatives, strict=True)))
+    names = [label for label, _ in pairs]
+    if len(set(names)) != len(names):
+        raise TypeError(
+            f"choice() has the same class twice ({names}); label them by keyword, e.g. choice(low=..., high=...)"
+        )
+    for label in names:
+        if not label or "." in label or "/" in label:
+            raise TypeError(f"choice() labels must be non-empty and contain no '.' or '/', got {label!r}")
+    return Choice({label: alternative._labeled(label) for label, alternative in pairs})
 
 
 def _is_option(value: Any, options: Sequence[Any]) -> bool:

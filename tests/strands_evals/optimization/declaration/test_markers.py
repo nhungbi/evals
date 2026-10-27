@@ -216,19 +216,40 @@ def test_component_rejects_a_non_callable():
 def test_choice_labels_default_to_class_names_in_order():
     declared = choice(component(Manager), component(OtherManager))
     assert list(declared.alternatives) == ["Manager", "OtherManager"]
+    assert [c.label for c in declared.alternatives.values()] == ["Manager", "OtherManager"]
 
 
-def test_choice_with_the_same_class_twice_needs_labels():
-    with pytest.raises(TypeError, match="labels"):
+def test_choice_keyword_labels_keep_their_order_and_reach_the_components():
+    declared = choice(summary=component(OtherManager), window=component(Manager))
+    assert list(declared.alternatives) == ["summary", "window"]  # the first keyword is the baseline
+    assert [c.label for c in declared.alternatives.values()] == ["summary", "window"]
+
+
+def test_choice_with_the_same_class_twice_needs_keyword_labels():
+    with pytest.raises(TypeError, match="keyword"):
         choice(component(Manager, ratio=0.1), component(Manager, ratio=0.9))
-    declared = choice(component(Manager, ratio=0.1), component(Manager, ratio=0.9), labels=["low", "high"])
+    declared = choice(low=component(Manager, ratio=0.1), high=component(Manager, ratio=0.9))
     assert list(declared.alternatives) == ["low", "high"]
 
 
-@pytest.mark.parametrize("labels", [["a"], ["a", "a"], ["a", "b.c"], ["a", "b/c"], ["a", ""]])
-def test_choice_rejects_bad_labels(labels):
+def test_one_component_can_sit_in_two_choices_under_different_labels():
+    shared = component(Manager)
+    first = choice(window=shared, other=component(OtherManager))
+    second = choice(sliding=shared, other=component(OtherManager))
+    assert first.alternatives["window"].label == "window"
+    assert second.alternatives["sliding"].label == "sliding"
+    assert shared.label == "Manager"
+
+
+def test_choice_rejects_mixed_positional_and_keyword_alternatives():
+    with pytest.raises(TypeError, match="not both"):
+        choice(component(Manager), other=component(OtherManager))
+
+
+@pytest.mark.parametrize("label", ["b.c", "b/c", ""])
+def test_choice_rejects_bad_labels(label):
     with pytest.raises(TypeError):
-        choice(component(Manager), component(OtherManager), labels=labels)
+        choice(**{"a": component(Manager), label: component(OtherManager)})
 
 
 def test_choice_rejects_non_components():
