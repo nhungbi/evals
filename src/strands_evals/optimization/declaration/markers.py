@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import inspect
+import math
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from ...types.optimization import Value
@@ -12,11 +14,7 @@ _UNSET: Any = object()
 
 
 class Int:
-    """An integer argument with inclusive bounds; the default must lie in `[ge, le]`.
-
-    Without `default=`, the wrapped function's parameter default is used. With neither (always the
-    case under `build_task`'s `space=`, which has no function), declaration raises `TypeError`.
-    """
+    """An integer argument with inclusive bounds; the default must lie in `[ge, le]`."""
 
     def __init__(self, ge: int, le: int, *, default: int | None = None, log: bool = False):
         """Declare a tunable integer.
@@ -28,17 +26,22 @@ class Int:
             log: Search on a log scale.
 
         Raises:
-            TypeError: No default anywhere, or one outside `[ge, le]`.
+            TypeError: Bounds that aren't integers or are empty, `log=True` with `ge <= 0`, or a
+                default that isn't an integer in `[ge, le]`.
         """
-        raise NotImplementedError
+        _check_number("Int", ge, le, default, log, valid=_is_int, expected="integers")
+        self.ge = ge
+        self.le = le
+        self.default = default
+        self.log = log
+
+    def _with_default(self, default: Any) -> Int:
+        """A copy with `default` filled in, re-running the declaration checks on it."""
+        return Int(self.ge, self.le, default=default, log=self.log)
 
 
 class Float:
-    """A float argument with inclusive bounds; the default must lie in `[ge, le]`.
-
-    Without `default=`, the wrapped function's parameter default is used; with neither, declaration
-    raises `TypeError`.
-    """
+    """A float argument with inclusive bounds; the default must lie in `[ge, le]`."""
 
     def __init__(self, ge: float, le: float, *, default: float | None = None, log: bool = False):
         """Declare a tunable float.
@@ -50,37 +53,57 @@ class Float:
             log: Search on a log scale.
 
         Raises:
-            TypeError: No default anywhere, or one outside `[ge, le]`.
+            TypeError: Bounds that aren't finite numbers or are empty, `log=True` with `ge <= 0`, or a
+                default that isn't a finite number in `[ge, le]`.
         """
-        raise NotImplementedError
+        _check_number("Float", ge, le, default, log, valid=_is_finite_number, expected="finite numbers")
+        # Stored as floats, so an integer default (`temperature=1`) hashes like the 1.0 a search proposes.
+        self.ge = float(ge)
+        self.le = float(le)
+        self.default = None if default is None else float(default)
+        self.log = log
+
+    def _with_default(self, default: Any) -> Float:
+        """A copy with `default` filled in, re-running the declaration checks on it."""
+        return Float(self.ge, self.le, default=default, log=self.log)
 
 
 class OneOf:
-    """A choice among plain values.
+    """A choice among plain values; the default must be one of the options."""
 
-    The default is `default=` if given, else the wrapped function's parameter default, else the first
-    option. A default that isn't one of the options raises `TypeError` at declaration.
-    """
-
-    def __init__(self, *options: str | int | float | bool | None, default: Value = _UNSET):
+    def __init__(self, *options: Value, default: Value = _UNSET):
         """Declare a choice among plain values.
 
         Args:
             *options: The plain values to choose from.
-            default: The baseline value; omit to use the wrapped parameter's default, or the first option.
+            default: The baseline value; omit to use the wrapped parameter's default, else the first option.
 
         Raises:
-            TypeError: The default is not one of the options.
+            TypeError: No options, an option that isn't a plain value, duplicate options, or a default
+                that isn't one of the options.
         """
-        raise NotImplementedError
+        if not options:
+            raise TypeError("OneOf needs at least one option")
+        for option in options:
+            if not isinstance(option, Value):
+                raise TypeError(
+                    f"OneOf options must be str, int, float, bool, or None, got {option!r}; "
+                    "use choice(component(...)) for objects"
+                )
+        if len({(type(option), option) for option in options}) != len(options):
+            raise TypeError(f"OneOf options must be distinct, got {list(options)!r}")
+        if default is not _UNSET and not _is_option(default, options):
+            raise TypeError(f"OneOf default {default!r} is not one of {list(options)!r}")
+        self.options = options
+        self.default = default
+
+    def _with_default(self, default: Any) -> OneOf:
+        """A copy with `default` filled in, re-running the declaration checks on it."""
+        return OneOf(*self.options, default=default)
 
 
 class TextValue:
-    """A text knob; `size_cap` rejects prompt bloat (default: `_default_size_cap(default)`).
-
-    Without `default=`, the wrapped function's parameter default is used; with neither, declaration
-    raises `TypeError`.
-    """
+    """A text knob; `size_cap` rejects prompt bloat (default: `max(2000, 3 * len(default))`)."""
 
     def __init__(
         self, *, default: str | None = None, size_cap: int | None = None, edit_instructions: str | None = None
@@ -93,52 +116,194 @@ class TextValue:
             edit_instructions: Shown to the proposer next to this value.
 
         Raises:
-            TypeError: No default anywhere.
+            TypeError: A default that isn't a str, or a `size_cap` that isn't a positive integer.
         """
-        raise NotImplementedError
+        if default is not None and not isinstance(default, str):
+            raise TypeError(f"TextValue default must be a str, got {type(default).__name__}")
+        _check_size_cap(size_cap)
+        self.default = default
+        self.size_cap = size_cap
+        self.edit_instructions = edit_instructions
+
+    def _with_default(self, default: Any) -> TextValue:
+        """A copy with `default` filled in, re-running the declaration checks on it."""
+        return TextValue(default=default, size_cap=self.size_cap, edit_instructions=self.edit_instructions)
 
 
 class Component:
-    """One constructible alternative, returned by `component()`."""
+    """One constructible alternative, returned by `component()`.
+
+    Create it with `component()`, which fills defaults and test-builds it; constructing it directly
+    skips those checks.
+
+    Attributes:
+        factory: The class or callable to construct.
+        fixed: Constructor arguments passed through unchanged: the same objects go to every build.
+        tunable: `Int` / `Float` constructor arguments, each with a default.
+        label: The default label in keys: the factory's name.
+    """
+
+    def __init__(self, factory: Callable[..., Any], fixed: dict[str, Any], tunable: dict[str, Int | Float]):
+        self.factory = factory
+        self.fixed = fixed
+        self.tunable = tunable
+        self.label: str = getattr(factory, "__name__", type(factory).__name__)
+
+    def build(self, values: dict[str, Any]) -> Any:
+        """Construct a fresh instance with `values` for the tunable arguments, through the real constructor."""
+        return self.factory(**self.fixed, **values)
 
 
 class Choice:
-    """A swap between components, returned by `choice()`; the first alternative is the baseline."""
+    """A swap between components, returned by `choice()`; the first alternative is the baseline.
+
+    Create it with `choice()`, which checks the labels; constructing it directly skips that.
+
+    Attributes:
+        alternatives: Label -> component, in declaration order.
+    """
+
+    def __init__(self, alternatives: dict[str, Component]):
+        self.alternatives = alternatives
 
 
 def component(factory: Callable[..., Any], /, **kwargs: Any) -> Component:
     """Declare one constructible alternative; `Int`/`Float` kwargs are tunable, others pass through.
 
-    `factory` is positional-only, so a constructor kwarg named `factory` can still be passed.
+    `factory` is positional-only, so a constructor kwarg named `factory` can still be passed. An
+    `Int` / `Float` without `default=` takes the constructor parameter's own default.
+
+    Other kwargs are passed as is, so every build gets the same object. Don't pass a stateful one
+    (an `Agent`, a client holding history): concurrent trials and later candidates would share it.
+    Build it inside your factory instead.
 
     Args:
         factory: The class or callable to construct.
         **kwargs: Constructor arguments; `Int` / `Float` markers among them are tunable.
 
     Raises:
-        TypeError: The constructor rejects its own defaults (probed at declaration).
+        TypeError: The constructor rejects its own defaults (probed at declaration), a tunable
+            argument has no default anywhere, or a kwarg is another kind of marker.
     """
-    raise NotImplementedError
+    if not callable(factory):
+        raise TypeError(f"component() needs a class or callable, got {factory!r}")
+    result = Component(factory, {}, {})
+    name = result.label
+    parameters = _parameters(factory)
+    for key, value in kwargs.items():
+        if isinstance(value, (Int, Float)):
+            result.tunable[key] = _with_constructor_default(name, key, value, parameters)
+        elif isinstance(value, (OneOf, TextValue, Component, Choice)):
+            raise TypeError(
+                f"component({name}): {key}= is a {type(value).__name__}; only Int and Float arguments are tunable"
+            )
+        else:
+            result.fixed[key] = value
+    try:
+        result.build({key: marker.default for key, marker in result.tunable.items()})
+    except Exception as error:
+        raise TypeError(f"component({name}): the constructor rejects its own defaults: {error}") from error
+    return result
 
 
-def choice(*alternatives: Component, **labeled: Component) -> Choice:
-    """Declare a swap between components; the first alternative is the baseline.
+def choice(*alternatives: Component, labels: Sequence[str] | None = None) -> Choice:
+    """Declare a swap between components.
 
-    Pass them positionally, labeled by class name, or by keyword, labeled by the keyword:
-    `choice(window=component(...), summary=component(...))`. The keyword form is needed when the same
-    class appears twice. Labels become key segments, so they contain no `.` or `/`.
+    Labels default to class names. The same class twice without labels is a `TypeError` at
+    declaration. Labels must be unique and contain no `.` or `/` (they become key segments, like
+    declared names).
 
     Args:
-        *alternatives: From `component()`, labeled by class name.
-        **labeled: From `component()`, labeled by keyword.
+        *alternatives: From `component()`; the first is the baseline.
+        labels: One name per alternative, used in keys; defaults to class names.
 
     Raises:
-        TypeError: No alternatives, positional and keyword alternatives mixed, the same class twice
-            positionally, or a label with `.` or `/`.
+        TypeError: The same class twice without labels, or duplicate labels, or labels with `.` or `/`.
     """
-    raise NotImplementedError
+    if not alternatives:
+        raise TypeError("choice() needs at least one component")
+    for alternative in alternatives:
+        if not isinstance(alternative, Component):
+            raise TypeError(f"choice() takes component(...) alternatives, got {type(alternative).__name__}")
+    if labels is None:
+        names = [alternative.label for alternative in alternatives]
+        if len(set(names)) != len(names):
+            raise TypeError(f"choice() has the same class twice ({names}); pass labels=[...] to tell them apart")
+    else:
+        names = list(labels)
+        if len(names) != len(alternatives):
+            raise TypeError(f"choice() got {len(alternatives)} alternatives but {len(names)} labels")
+        for label in names:
+            if not isinstance(label, str) or not label or "." in label or "/" in label:
+                raise TypeError(f"choice() labels must be non-empty strings without '.' or '/', got {label!r}")
+        if len(set(names)) != len(names):
+            raise TypeError(f"choice() labels must be unique, got {names}")
+    return Choice(dict(zip(names, alternatives, strict=True)))
+
+
+def _is_option(value: Any, options: Sequence[Any]) -> bool:
+    """Whether `value` is one of `options`, comparing types too (so `True` is not the option `1`)."""
+    return any(type(option) is type(value) and option == value for option in options)
 
 
 def _default_size_cap(baseline: str) -> int:
     """`max(2000, 3 * len(baseline))`; shared with `files.py`."""
-    raise NotImplementedError
+    return max(2000, 3 * len(baseline))
+
+
+def _is_int(value: Any) -> bool:
+    """Whether `value` is an int; `bool` is a subclass of int but doesn't count."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value: Any) -> bool:
+    """Whether `value` is an int or float, excluding `bool`."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_finite_number(value: Any) -> bool:
+    """Whether `value` is a finite int or float, excluding `bool`; NaN would slip past every range check."""
+    return _is_number(value) and math.isfinite(value)
+
+
+def _check_number(
+    kind: str, ge: Any, le: Any, default: Any, log: bool, *, valid: Callable[[Any], bool], expected: str
+) -> None:
+    """The `Int` / `Float` declaration checks; `valid` says what a bound or default may be. Raises `TypeError`."""
+    if not (valid(ge) and valid(le)):
+        raise TypeError(f"{kind} bounds must be {expected}, got ge={ge!r}, le={le!r}")
+    if ge > le:
+        raise TypeError(f"{kind} bounds are empty: ge={ge!r} > le={le!r}")
+    if log and ge <= 0:
+        raise TypeError(f"{kind}(log=True) needs ge > 0, got ge={ge!r}")
+    if default is not None and not (valid(default) and ge <= default <= le):
+        raise TypeError(f"{kind} default must lie in [{ge!r}, {le!r}] ({expected} only), got {default!r}")
+
+
+def _check_size_cap(size_cap: int | None) -> None:
+    """Raise `TypeError` unless `size_cap` is None or a positive integer; shared with `tools.py`."""
+    if size_cap is not None and (not _is_int(size_cap) or size_cap < 1):
+        raise TypeError(f"size_cap must be a positive integer, got {size_cap!r}")
+
+
+def _parameters(factory: Callable[..., Any]) -> dict[str, inspect.Parameter] | None:
+    """The factory's parameters, or None when its signature can't be read (some builtins)."""
+    try:
+        return dict(inspect.signature(factory).parameters)
+    except (TypeError, ValueError):
+        return None
+
+
+def _with_constructor_default(
+    name: str, key: str, marker: Int | Float, parameters: dict[str, inspect.Parameter] | None
+) -> Int | Float:
+    """`marker` with a missing default taken from the constructor parameter `key`; raises `TypeError`."""
+    if marker.default is not None:
+        return marker
+    parameter = (parameters or {}).get(key)
+    if parameter is None or parameter.default is inspect.Parameter.empty:
+        raise TypeError(f"component({name}): {key}= has no default; pass default= or give the parameter one")
+    try:
+        return marker._with_default(parameter.default)
+    except TypeError as error:
+        raise TypeError(f"component({name}): the default of {key}= doesn't fit its marker: {error}") from error

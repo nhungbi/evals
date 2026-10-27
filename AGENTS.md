@@ -126,6 +126,18 @@ strands-evals/
 │   │   │   └── sequentialbreak/              # SequentialBreakStrategy
 │   │   └── (evaluator in evaluators/redteam/, types in types/redteam/)
 │   │
+│   ├── optimization/                         # Optimizer
+│   │   ├── declaration/                      # Markers, tunable / TunableFactory, Space (flat typed keys)
+│   │   ├── candidates/                       # Candidate (typed values, content id), diff
+│   │   ├── execution/                        # Trial statuses, default rollout, trace capture, TrialRunner
+│   │   ├── scoring/                          # Metric registry, objectives, constraints
+│   │   ├── search/                           # Method, Block / Search / schedules, TPE, Reflection
+│   │   ├── selection/                        # Selection, Greedy, CaseFrontier, merge
+│   │   ├── acceptance/                       # Splits, gate, paired bootstrap, budget
+│   │   ├── record/                           # Run directory, lineage, resume
+│   │   ├── admission.py / optimizer.py / result.py / rewards.py
+│   │   └── (data records in types/optimization/)
+│   │
 │   ├── experimental/                         # Experimental features (no stability guarantees)
 │   │
 │   ├── detectors/                            # Failure detection + RCA
@@ -207,6 +219,7 @@ strands-evals/
 │       ├── trace.py                          # Session, Trace, SpanUnion
 │       ├── detector.py                       # FailureItem, RCAItem, DiagnosisResult, ...
 │       ├── multimodal.py
+│       ├── optimization/                     # Frozen pydantic records the optimizer saves (trials, scores, lineage)
 │       ├── redteam/
 │       │   ├── config.py                     # AttackGoal, RedTeamConfig, Severity
 │       │   ├── risk_category.py              # RISK_CATEGORIES, DEFAULT_SEVERITY
@@ -223,7 +236,8 @@ strands-evals/
 │   ├── chaos/
 │   ├── detectors/
 │   ├── experimental/
-│   ├── redteam/                          # Mirrors src/strands_evals/redteam/
+│   ├── redteam/                          
+│   ├── optimization/                     
 │   ├── simulation/
 │   ├── extractors/
 │   ├── generators/
@@ -234,6 +248,7 @@ strands-evals/
 │   ├── cli/
 │   │   └── fixtures/                         # local agent / task / evaluator fixtures
 │   └── types/
+│       ├── optimization/
 │       └── redteam/
 │
 ├── tests_integ/                              # Integration tests (real providers)
@@ -474,6 +489,7 @@ If you are an agent opening a PR on behalf of a contributor, the human is the au
 - When editing `detectors/`, keep the three-tier RCA fallback and the `model.stream()` text-mode path for failure detection intact unless the PR explicitly targets those behaviors.
 - When editing `chaos/`, keep the `ContextVar`-based plugin dispatch and the discriminated-union effect serialization intact; `ChaosPlugin` should remain a thin reader of the active `ChaosCase`.
 - When editing `redteam/`, keep `AttackStrategy` instances stateless across cases (clear in `reset()`) and prefer extending the strategy library over modifying `RedTeamExperiment`'s cross-product loop.
+- When editing `optimization/`, a layer imports only the layers before it (`declaration → candidates → execution / scoring → search | selection | acceptance → record → optimizer`); `search`, `selection`, and `acceptance` never import each other, and only `optimizer.py` (with `admission.py`) sees every layer. Agents are always rebuilt through `bind(values)`, never patched, and only the gate reads holdout scores.
 
 ## Things NOT to Do
 
