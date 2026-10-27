@@ -27,7 +27,7 @@ from .execution.rollout import EnvironmentFn, RolloutFn, TaskFn
 from .optimizer import Optimizer
 from .result import CandidateView, Grain, OptimizationResult
 from .rewards import RewardFunction, RewardFunctionEvaluator, RewardResult
-from .scoring.objectives import AtLeast, AtMost, Constraint, Maximize, MetricExpr, Minimize, Objective, metric
+from .scoring.objectives import AtLeast, AtMost, Constraint, Maximize, MetricTarget, Minimize, Objective, WeightedSum
 from .search.blocks import Alternate, Block, Joint, Schedule, Search
 from .search.method import Method, ProposalRequest
 from .search.reflection import Reflection
@@ -65,7 +65,7 @@ __all__ = [
     "Maximize",
     "MergePlan",
     "Method",
-    "MetricExpr",
+    "MetricTarget",
     "Minimize",
     "Objective",
     "Observation",
@@ -100,9 +100,9 @@ __all__ = [
     "TunableFactory",
     "Usage",
     "Value",
+    "WeightedSum",
     "choice",
     "component",
-    "metric",
     "tool_descriptions",
     "tunable",
 ]

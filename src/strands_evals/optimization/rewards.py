@@ -27,8 +27,8 @@ class RewardFunctionEvaluator(Evaluator[InputT, OutputT]):
     """Adapts a `RewardFunction` into an `Evaluator`; the reason falls back to `f"reward_value={score}"`.
 
     Named after the reward's class unless `name=` is given, so two different rewards need no `name=`;
-    two instances of the same reward class do. Refer to it in an objective by that name or with
-    `metric(instance)`; `metric(RewardFunctionEvaluator)` names no particular reward.
+    two instances of the same reward class do. Refer to it in an objective by that name or by the
+    instance (`Maximize(instance)`); `Maximize(RewardFunctionEvaluator)` names no particular reward.
     """
 
     def __init__(self, reward: RewardFunction, *, pass_threshold: float = 1.0, name: str | None = None):

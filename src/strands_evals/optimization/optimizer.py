@@ -21,7 +21,8 @@ from .selection.base import Selection
 class Optimizer:
     """Searches for changes to a declared agent and keeps only those the holdout gate accepts.
 
-    Pass either `factory=` (a `TunableFactory`) or `build_task=` with `space=`. `environment=`
+    Pass either `factory` (a `TunableFactory`, positionally as in `Optimizer(experiment, create_agent)`
+    or by keyword) or `build_task=` with `space=`. `environment=`
     and `rollout_fn=` work only with `factory=`. `objective=None` maximizes the mean of every
     evaluator's score, as a plain eval run reports it. `retries` caps the infrastructure re-run
     passes per candidate. Construction warns when a TPE block is combined with `CaseFrontier`.
@@ -35,8 +36,8 @@ class Optimizer:
     def __init__(
         self,
         experiment: Experiment,
-        *,
         factory: TunableFactory | None = None,
+        *,
         rollout_fn: RolloutFn | None = None,
         build_task: Callable[[BuildContext], TaskFn] | None = None,
         space: Mapping[str, Marker] | None = None,
