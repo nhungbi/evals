@@ -1,10 +1,10 @@
-"""Metric names: evaluator scores and usage metrics."""
+"""Metric names and ranges: evaluator scores and usage metrics."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping
 
-from ...types.optimization import TrialRecord
+from ...types.optimization import Range
 
 USAGE_METRICS = (
     "input_tokens",
@@ -18,10 +18,33 @@ USAGE_METRICS = (
 
 
 class MetricRegistry:
-    """Maps metric names as written to evaluator names or usage metrics."""
+    """Maps metric names as written to evaluator names or usage metrics, and knows each metric's range."""
 
-    def __init__(self, evaluator_names: Sequence[str]):
-        """`evaluator_names` are `get_name()` values; one equal to a usage metric name raises `ValueError`."""
+    def __init__(self, evaluators: Mapping[str, Range]):
+        """Register the run's evaluators.
+
+        An evaluator's range is its optional `score_range` attribute, else `(0.0, 1.0)`; usage metrics are
+        `(0, None)`.
+
+        Args:
+            evaluators: `get_name()` -> its range.
+
+        Raises:
+            ValueError: An evaluator is named like a usage metric.
+        """
+        raise NotImplementedError
+
+    @property
+    def evaluators(self) -> tuple[str, ...]:
+        """The evaluators' names, in registration order (the default objective maximizes each)."""
+        raise NotImplementedError
+
+    def is_usage(self, name: str) -> bool:
+        """Whether the resolved metric is a usage metric (no crash scoring, measured on crashed runs too)."""
+        raise NotImplementedError
+
+    def range(self, name: str) -> Range:
+        """The resolved metric's range."""
         raise NotImplementedError
 
     def resolve(self, name: str) -> str:
@@ -31,12 +54,3 @@ class MetricRegistry:
         raise `ValueError`.
         """
         raise NotImplementedError
-
-
-def _case_metrics(records: Sequence[TrialRecord]) -> dict[str, dict[str, float]]:
-    """Per-case metric means.
-
-    Evaluator metrics average completed runs with N/A rows dropped; usage metrics average completed
-    and agent_failure runs.
-    """
-    raise NotImplementedError

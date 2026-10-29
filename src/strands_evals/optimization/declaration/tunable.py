@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, overload
 
-from ...types.optimization import Value
+from ...types.optimization import Value, Values
 from .space import Marker, Space
 
 
@@ -33,8 +33,13 @@ class BuildContext:
     workspace: Path | None
 
 
-class _ResourceConflictError(TypeError):
-    """A resource passed to a bound factory is named like a declared marker; a setup error, not a trial status."""
+class _FactoryArgumentError(TypeError):
+    """A bad argument to a bound factory; a setup error, never a trial status.
+
+    Raised for a resource or kwarg named like a declared marker, or a call kwarg the user's function
+    doesn't accept. Never an `agent_failure`: under `crash_score="worst"` that would score every
+    trial at its worst end and the run would go on measuring nothing.
+    """
 
 
 class TunableFactory:
@@ -46,25 +51,33 @@ class TunableFactory:
         """Build the baseline (every value at its default); never copies files."""
         raise NotImplementedError
 
-    def validate(self, values: Mapping[str, Value]) -> None:
+    def validate(self, values: Values) -> None:
         """Same as `self.space.validate(values)`; raises `ValueError`."""
         raise NotImplementedError
 
-    def bind(self, values: Mapping[str, Value], *, workspace: Path | None = None) -> Callable[..., Any]:
+    def bind(self, values: Values, *, workspace: Path | None = None) -> Callable[..., Any]:
         """Return a factory that builds fresh components with `values` bound on every call.
 
-        Copies files only if an active value reaches the agent as a path (`as_path=True`,
-        `SkillLibrary`): into `workspace` (cached), or with `workspace=None` into one temp folder per
-        `bind()` call, deleted when the bound factory is garbage-collected. The bound factory takes
-        resource kwargs, each passed only if the user's function declares it; a kwarg named like a
-        declared marker raises `_ResourceConflictError`.
+        Fills missing keys with defaults but drops nothing (an inactive key raises `ValueError`), and
+        validates before any build. Copies files only if an active value reaches the agent as a path
+        (`as_path=True`, `SkillLibrary`): into `workspace` (cached), or with `workspace=None` into one
+        temp folder per `bind()` call, deleted when the bound factory is garbage-collected.
+
+        The bound factory takes values for the function's non-tunable parameters, by two rules:
+        resources from `environment()` (handed over through its private `_with_resources(resources)`)
+        are passed only if the function declares that parameter by name; kwargs passed in the call go
+        through as in a normal call, and one the function doesn't accept raises `_FactoryArgumentError`.
+        Either kind named like a declared marker raises `_FactoryArgumentError`.
 
         Args:
             values: The candidate's values.
             workspace: Where to write the candidate's file copy; None outside a run.
 
         Returns:
-            A factory that builds fresh components on every call and takes resource kwargs.
+            A factory that builds fresh components on every call.
+
+        Raises:
+            ValueError: The values fail validation.
         """
         raise NotImplementedError
 
@@ -94,6 +107,7 @@ def tunable(
         A `TunableFactory`, or a decorator returning one.
 
     Raises:
-        TypeError: A marker names no parameter, or has no default anywhere.
+        TypeError: A marker names no parameter, has no default anywhere, or is of an unknown type;
+            or `fn` is already a `TunableFactory` (declare every marker in one `tunable(...)`).
     """
     raise NotImplementedError

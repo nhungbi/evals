@@ -15,7 +15,7 @@ class Int:
     """An integer argument with inclusive bounds; the default must lie in `[ge, le]`.
 
     Without `default=`, the wrapped function's parameter default is used. With neither (always the
-    case under `build_task`'s `space=`, which has no function), declaration raises `TypeError`.
+    case under `build_task`'s `space=`, which has no function), `tunable` or `Space` raises `TypeError`.
     """
 
     def __init__(self, ge: int, le: int, *, default: int | None = None, log: bool = False):
@@ -28,7 +28,7 @@ class Int:
             log: Search on a log scale.
 
         Raises:
-            TypeError: No default anywhere, or one outside `[ge, le]`.
+            TypeError: A default outside `[ge, le]`.
         """
         raise NotImplementedError
 
@@ -36,8 +36,8 @@ class Int:
 class Float:
     """A float argument with inclusive bounds; the default must lie in `[ge, le]`.
 
-    Without `default=`, the wrapped function's parameter default is used; with neither, declaration
-    raises `TypeError`.
+    Without `default=`, the wrapped function's parameter default is used; with neither, `tunable` or
+    `Space` raises `TypeError`.
     """
 
     def __init__(self, ge: float, le: float, *, default: float | None = None, log: bool = False):
@@ -50,7 +50,7 @@ class Float:
             log: Search on a log scale.
 
         Raises:
-            TypeError: No default anywhere, or one outside `[ge, le]`.
+            TypeError: A default outside `[ge, le]`.
         """
         raise NotImplementedError
 
@@ -78,7 +78,7 @@ class OneOf:
 class TextValue:
     """A text knob; `size_cap` rejects prompt bloat (default: `_default_size_cap(default)`).
 
-    Without `default=`, the wrapped function's parameter default is used; with neither, declaration
+    Without `default=`, the wrapped function's parameter default is used; with neither, `tunable`
     raises `TypeError`.
     """
 
@@ -91,50 +91,77 @@ class TextValue:
             default: The baseline text; omit to use the wrapped parameter's default.
             size_cap: Max characters; None means `max(2000, 3 * len(default))`.
             edit_instructions: Shown to the proposer next to this value.
-
-        Raises:
-            TypeError: No default anywhere.
         """
         raise NotImplementedError
 
 
 class Component:
-    """One constructible alternative, returned by `component()`."""
+    """One constructible alternative, returned by `component()`.
+
+    Attributes:
+        factory: The class or callable to construct.
+        fixed: Constructor kwargs passed through as is.
+        tunable: Constructor kwargs declared as `Int` / `Float`.
+        label: The alternative's label inside a `choice()`; the class name by default.
+    """
+
+    factory: Callable[..., Any]
+    fixed: dict[str, Any]
+    tunable: dict[str, Int | Float]
+    label: str
+
+    def build(self, values: dict[str, Any]) -> Any:
+        """A fresh instance through the real constructor, with `values` for the tunable kwargs."""
+        raise NotImplementedError
 
 
 class Choice:
-    """A swap between components, returned by `choice()`; the first alternative is the baseline."""
+    """A swap between alternatives, returned by `choice()`.
+
+    Attributes:
+        alternatives: Label -> a `Component` or a fixed value, baseline first.
+    """
+
+    alternatives: dict[str, Component | Any]
 
 
 def component(factory: Callable[..., Any], /, **kwargs: Any) -> Component:
     """Declare one constructible alternative; `Int`/`Float` kwargs are tunable, others pass through.
 
-    `factory` is positional-only, so a constructor kwarg named `factory` can still be passed.
+    `factory` is positional-only, so a constructor kwarg named `factory` can still be passed. An
+    `Int` / `Float` kwarg without `default=` takes the constructor parameter's default. The
+    constructor is probed once, here, with its defaults.
+
+    Other kwargs pass through as is, so every build gets the same objects: build stateful ones (an
+    `Agent`, a client) inside the factory, or they are shared across trials.
 
     Args:
         factory: The class or callable to construct.
         **kwargs: Constructor arguments; `Int` / `Float` markers among them are tunable.
 
     Raises:
-        TypeError: The constructor rejects its own defaults (probed at declaration).
+        TypeError: The constructor rejects its own defaults (the exception is chained), an `Int` /
+            `Float` kwarg has no default anywhere, or another marker is passed as a kwarg.
     """
     raise NotImplementedError
 
 
-def choice(*alternatives: Component, **labeled: Component) -> Choice:
-    """Declare a swap between components; the first alternative is the baseline.
+def choice(*alternatives: Component, **labeled: Component | Any) -> Choice:
+    """Declare a swap between alternatives; the first is the baseline.
 
-    Pass them positionally, labeled by class name, or by keyword, labeled by the keyword:
+    Pass components positionally, labeled by class name, or by keyword, labeled by the keyword:
     `choice(window=component(...), summary=component(...))`. The keyword form is needed when the same
-    class appears twice. Labels become key segments, so they contain no `.` or `/`.
+    class appears twice. A keyword alternative may also be a fixed value, passed through as is:
+    `choice(on=component(ToolCallLimiter, max_calls=Int(1, 20)), off=None)`. Labels become key
+    segments, so they contain no `.` or `/`.
 
     Args:
         *alternatives: From `component()`, labeled by class name.
-        **labeled: From `component()`, labeled by keyword.
+        **labeled: From `component()` or a fixed value, labeled by keyword.
 
     Raises:
-        TypeError: No alternatives, positional and keyword alternatives mixed, the same class twice
-            positionally, or a label with `.` or `/`.
+        TypeError: No alternatives, positional and keyword alternatives mixed, a positional fixed
+            value, the same class twice positionally, or a label with `.` or `/`.
     """
     raise NotImplementedError
 

@@ -66,6 +66,7 @@ def _usage(cache_read_tokens=None):
         cache_write_tokens=None,
         model_calls=1,
         seconds=1.5,
+        models=["us.anthropic.claude-sonnet-4-5"],
     )
 
 
@@ -74,16 +75,18 @@ def _record(trajectory):
         candidate_id="abc123def456",
         case_name="arithmetic",
         run_index=0,
-        split="selection",
+        split="validation",
         status=TrialStatus.COMPLETED,
         error_type=None,
         error=None,
         attempts=1,
+        earlier=[],
         output="4",
         trajectory=trajectory,
         interactions=None,
         environment_state=None,
         evaluations={"HelpfulnessEvaluator": EvaluationOutput(score=1.0, test_pass=True, reason="Correct.")},
+        details={"HelpfulnessEvaluator": [EvaluationOutput(score=1.0, test_pass=True, reason="Correct.")]},
         evaluator_errors={},
         usage=_usage(),
         judge_usage=_usage(),

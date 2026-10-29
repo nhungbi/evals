@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from ...evaluators.evaluator import Evaluator
-from ...types.optimization import Splits, SplitScores, TrialRecord
+from ...types.optimization import CandidateScores, CaseSplit, Measured, SplitScores, TrialRecord
 from .metrics import MetricRegistry
 
 MetricTarget = str | Evaluator | type[Evaluator]
@@ -28,8 +29,9 @@ class _Direction:
         Args:
             target: A metric name, an evaluator class, or an evaluator instance.
             weight: Relative importance inside `WeightedSum`.
-            scale: The size of a meaningful change, so metrics in different units combine; None means
-                1.0 for an evaluator score. A usage metric inside `WeightedSum` needs it.
+            scale: The size of a meaningful change, so metrics in different units combine; None means the
+                metric's range width (1.0 for a 0-1 evaluator). An unbounded metric (every usage metric)
+                inside `WeightedSum` needs it.
 
         Raises:
             ValueError: `weight` or `scale` is not > 0.
@@ -69,7 +71,9 @@ class WeightedSum:
 
         Raises:
             TypeError: No objectives, or one that isn't a `Maximize` / `Minimize`.
-            ValueError: The same metric twice, or a usage metric without `scale=`.
+            ValueError: The same target string twice, or a usage metric name without `scale=`. `Criteria`
+                repeats both checks on resolved names and ranges (an evaluator with an unbounded
+                `score_range`, `"Helpfulness"` next to `HelpfulnessEvaluator`).
         """
         raise NotImplementedError
 
@@ -83,7 +87,7 @@ Objective = Maximize | Minimize | WeightedSum
 
 @dataclass(frozen=True, init=False)
 class _Bound:
-    """A bound on one metric's mean that can only reject."""
+    """A bound on one metric's mean; during the search it only ranks, at the final pick it decides."""
 
     metric: str
     bound: float
@@ -103,59 +107,134 @@ class _Bound:
 
 
 class AtMost(_Bound):
-    """Rejects when the metric's mean exceeds `bound`, e.g. `AtMost("tokens", 4000)`."""
+    """The metric's mean must not exceed `bound`, e.g. `AtMost("tokens", 4000)`."""
 
 
 class AtLeast(_Bound):
-    """Rejects when the metric's mean falls below `bound`, e.g. `AtLeast("Harmfulness", 0.95)`."""
+    """The metric's mean must not fall below `bound`, e.g. `AtLeast("Harmfulness", 0.95)`."""
 
 
 Constraint = AtMost | AtLeast
 
 
 class Criteria:
-    """The objective plus the constraints; names resolve through the registry at construction."""
+    """The objective plus the constraints; names resolve through the registry at construction.
 
-    def __init__(self, objective: Objective | None, constraints: Sequence[Constraint], registry: MetricRegistry):
+    Attributes:
+        objective: What to optimize, the default filled in, every metric name resolved.
+        constraints: The constraints, metric names resolved.
+        registry: The run's metric registry.
+        crash_score: What an `agent_failure` run's evaluator metrics count as.
+        goal_metrics: The metrics the score model fits, one model each: the objective's metrics, then the
+            constraints' metrics, each once, in that order.
+    """
+
+    objective: Objective
+    constraints: tuple[Constraint, ...]
+    registry: MetricRegistry
+    crash_score: Literal["worst"] | float | None
+    goal_metrics: tuple[str, ...]
+
+    def __init__(
+        self,
+        objective: Objective | None,
+        constraints: Sequence[Constraint],
+        registry: MetricRegistry,
+        *,
+        crash_score: Literal["worst"] | float | None = "worst",
+    ):
         """`objective=None` means maximize the mean of every evaluator's score.
+
+        `crash_score` is what an `agent_failure` run's evaluator metrics count
+        as: "worst" = each evaluator metric's worst end for the goals that use it (0 for a 0-1 score
+        maximized), a number = that score, None = missing data. Infrastructure and verifier failures are
+        always missing. Usage metrics have no worst end, so a crashed run's usage counts as measured.
 
         Args:
             objective: What to optimize; None means the mean of every evaluator's score.
-            constraints: Bounds that can only reject.
-            registry: Resolves the metric names.
+            constraints: Bounds every shipped candidate must meet.
+            registry: Resolves the metric names and gives their ranges.
+            crash_score: What an `agent_failure` run's evaluator metrics count as.
 
         Raises:
-            ValueError: A metric name is unknown or ambiguous.
+            ValueError: A metric name is unknown or ambiguous; or, inside a `WeightedSum`, the same metric
+                twice after resolution, or a metric with an unbounded range and no `scale=`.
         """
         raise NotImplementedError
 
-    def scalar(self, metrics: Mapping[str, float]) -> float | None:
-        """The objective for one case or run, always higher-is-better (`Minimize` negates).
+    def crash_value(self, metric: str) -> float | None:
+        """What an `agent_failure` run counts as for one evaluator metric.
 
-        A lone `Maximize` / `Minimize` gives the metric's value as is; `WeightedSum` its weighted mean.
+        Under `crash_score="worst"`: the range's low end when every goal on the metric is a `Maximize` or
+        `AtLeast`, the high end when every one is a `Minimize` or `AtMost`; None when that end is unbounded,
+        the goals disagree, or no goal uses the metric. A number gives that number; None gives None.
+        Usage metrics always give None (a crash's usage is measured, not scored).
         """
         raise NotImplementedError
 
-    def violations(self, per_case: Mapping[str, Mapping[str, float]]) -> list[str]:
-        """One message per violated constraint; a constraint never measured counts as violated.
+    def objective_value(self, metrics: Mapping[str, float]) -> float | None:
+        """The objective from per-metric values, always higher-is-better (`Minimize` negates).
 
-        `per_case` maps case name -> metric name -> value.
+        A lone `Maximize` / `Minimize` gives the metric's value; `WeightedSum` its weighted mean, with no
+        baseline subtraction. Applied to measured values (per case or per run, measured means, the test
+        report) and, by the ranking, to each goal metric's estimate from a fit, never to a fitted scalar.
+        None when the values leave it unmeasured.
+        """
+        raise NotImplementedError
+
+    def violations(self, metrics_by_case: Mapping[str, Mapping[str, float]]) -> list[str]:
+        """One message per violated constraint on measured means; a constraint never measured counts as violated.
+
+        `metrics_by_case` maps case name -> metric name -> value, as `CandidateScores.metrics_by_case`.
         """
         raise NotImplementedError
 
 
-def score(candidate_id: str, records: Sequence[TrialRecord], criteria: Criteria, splits: Splits) -> SplitScores:
+def _case_metrics(
+    records: Sequence[TrialRecord], criteria: Criteria
+) -> tuple[dict[str, dict[str, list[float | None]]], dict[str, dict[int, dict[str, str]]]]:
+    """Per-run metric values per case, and the values taken out.
+
+    Evaluator metrics: completed runs as measured, `agent_failure` runs as `criteria.crash_value(metric)`
+    (left out when None), N/A rows dropped. Usage metrics: completed and `agent_failure` runs as measured
+    (a crash's tokens are real cost). `infrastructure_invalid` and `verifier_invalid` runs are left out.
+    An evaluator value outside its range is taken out with the reason "give the evaluator a
+    score_range = (low, high)", never clipped; the trial's saved status is left as is.
+
+    Args:
+        records: One candidate's trial records on one split.
+        criteria: Supplies each metric's range, kind, and crash value.
+
+    Returns:
+        Case -> metric -> per-run values, and what was taken out: case -> run index -> metric -> reason
+        (kept as `CandidateScores.unavailable`).
+    """
+    raise NotImplementedError
+
+
+def score(candidate_id: str, records: Sequence[TrialRecord], criteria: Criteria, splits: CaseSplit) -> SplitScores:
     """Group records by split and average per case.
 
-    A run's scalar is measured only when its status is completed, so a crash never scores.
+    An `agent_failure` run is measured with `criteria`'s `crash_score`; infrastructure and verifier
+    failures are missing. Consumers take one split: the search (fit, selection, labels, observe,
+    Reflection) `.train`, the end phase's pick `.validation`, the test report `.test`.
 
     Args:
         candidate_id: The candidate.
         records: Its trial records on any splits.
-        criteria: Computes each run's scalar.
-        splits: The run's splits.
+        criteria: Computes each run's objective and supplies `crash_score`.
+        splits: The run's split.
 
     Returns:
-        One `CandidateScores` per split; a split not scored yet is empty.
+        One `CandidateScores` per split scored; validation and test are None when it wasn't scored on them.
+    """
+    raise NotImplementedError
+
+
+def measured(scores: CandidateScores) -> dict[str, Measured]:
+    """Every metric in `scores.metrics_by_case`, with a 90% t-interval over the case means.
+
+    A metric with no value on any case is left out. For reporting only (`CandidateLabel`, `ValidationReport`,
+    `TestReport`); the ranking keeps using `CandidateScores.objective` and the fit.
     """
     raise NotImplementedError

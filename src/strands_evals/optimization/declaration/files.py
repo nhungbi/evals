@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...types.optimization import Value
+from ...types.optimization import Values
 
+# Type-checking only: space.py imports this module, so a runtime import would be a cycle. Internal,
+# so get_type_hints(create_candidate_copy) failing on `Space` breaks no exported signature.
 if TYPE_CHECKING:
     from .space import Space
 
@@ -104,7 +105,7 @@ class SkillLibrary:
         raise NotImplementedError
 
 
-def create_candidate_copy(space: Space, values: Mapping[str, Value], directory: Path) -> Path:
+def create_candidate_copy(space: Space, values: Values, directory: Path) -> Path:
     """Copy each file-backed value's folder into `directory`, then write every active file-backed key.
 
     Each source folder goes to `directory/<folder name>-<short hash of its original path>/`; a folder

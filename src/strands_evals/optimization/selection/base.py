@@ -1,49 +1,55 @@
-"""The `Selection` base class and its context: picks the parent, never the champion."""
+"""The `Selection` base class and its context: picks the parent, never what ships."""
 
 from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ...types.optimization import SelectionStep, Value
+from ...types.optimization import Values
+from ..score_model.protocols import Fit
+from ..score_model.ranking import Assessment
 
 
 @dataclass(frozen=True)
 class SelectionContext:
-    """The pool as selection sees it: selection-split scores only.
+    """The step's possible parents as selection sees them: train data only.
 
-    A dataclass, not a record: it holds the RNG and callables, and is never saved.
+    A dataclass, not a record: it holds the fit and the RNG, and is never saved.
 
     Attributes:
-        scores: Candidate id -> case name -> selection-split score.
+        pool: The step's possible parents (`Step.parents`, else every eligible candidate so far, the
+            baseline and infeasible ones included), in scoring order; never empty. Ineligible candidates
+            and invalid, duplicate, or unscored proposals are not in it.
+        assessments: The ranking's `Assessment` for every pool candidate.
+        ranking: The pool in ranking order.
+        scores: Candidate id -> case name -> train objective (`CandidateScores.objective_by_case`).
         values: Candidate id -> key -> value.
-        parents: Candidate id -> parent ids.
-        champion_id: The current champion.
-        selection_cases: Every selection-split case name.
-        rng: Seeded per iteration.
-        merges_done: Merges so far in this run.
-        merged_pairs: Pairs already merged, each tried once.
-        validate: `space.validate`.
-        name_of: Returns a key's declared name (the merge unit).
+        parents: Candidate id -> parent id (None for the baseline).
+        trial_counts: Candidate id -> train trials that count.
+        fit: Read-only; None before 2 candidates are eligible.
+        iteration: The current iteration.
+        history: Parents chosen so far, oldest first.
+        rng: `random.Random(f"{seed}:{iteration}")`, so a resumed run picks the same parents.
     """
 
+    pool: Sequence[str]
+    assessments: Mapping[str, Assessment]
+    ranking: Sequence[str]
     scores: Mapping[str, Mapping[str, float]]
-    values: Mapping[str, Mapping[str, Value]]
-    parents: Mapping[str, tuple[str, ...]]
-    champion_id: str
-    selection_cases: Sequence[str]
+    values: Mapping[str, Values]
+    parents: Mapping[str, str | None]
+    trial_counts: Mapping[str, int]
+    fit: Fit | None
+    iteration: int
+    history: Sequence[str]
     rng: random.Random
-    merges_done: int
-    merged_pairs: frozenset[frozenset[str]]
-    validate: Callable[[Mapping[str, Value]], None]
-    name_of: Callable[[str], str]
 
 
 class Selection(ABC):
-    """Decides the parent each iteration (or a merge) and which proposals join the pool.
+    """Picks the parent each iteration; it never decides what ships.
 
     Not to be confused with `Search`, which decides which method changes which variables.
     An ABC because users subclass it (like `Method`); internal seams such as `TrialCache` are
@@ -56,20 +62,12 @@ class Selection(ABC):
     name: ClassVar[str]
 
     @abstractmethod
-    def choose(self, ctx: SelectionContext) -> SelectionStep:
-        """The parent, or a merge; an id outside the pool makes the optimizer raise `ValueError`."""
+    def choose(self, ctx: SelectionContext) -> str:
+        """The parent's id; one outside `ctx.pool` makes the optimizer raise `ValueError`.
 
-    @abstractmethod
-    def admits(self, candidate_id: str, scores: Mapping[str, float], ctx: SelectionContext) -> bool:
-        """Whether the candidate joins the pool; it already passed constraints and coverage.
-
-        Which cases it leads doesn't depend on the strategy, so the optimizer computes that itself
-        (`cases_led`).
-
-        Args:
-            candidate_id: The candidate.
-            scores: Case name -> its selection-split score.
-            ctx: The pool as selection sees it, without the candidate.
+        Take all randomness from `ctx.rng`. Beyond the ranking, a custom strategy can explore: random
+        top-k, Thompson over sampled effects, UCB (mean + k·sd), annealing over the iteration, novelty
+        via `ctx.history`.
         """
 
     def config(self) -> dict[str, Any]:

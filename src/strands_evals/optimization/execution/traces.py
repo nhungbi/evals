@@ -14,7 +14,8 @@ class EvaluatorView:
     """What the `evaluator {name}` spans of one trial say.
 
     `labels` come from each evaluator span's `gen_ai.evaluation.score.label`, which `Experiment`
-    computes but doesn't return.
+    computes but doesn't return. `errors` holds exception type names for the record only; whether a
+    judge failure was infrastructure comes from `TrialRunner`'s evaluator proxy, never from these names.
     """
 
     judge_usage: Usage
@@ -45,7 +46,17 @@ class TraceCapture:
         """
         raise NotImplementedError
 
+    def attempt_usage(self, trace_id: int, attempt_span_id: int) -> Usage:
+        """One earlier attempt's usage (`TrialLogEntry.earlier`), by `agent_view`'s rules; for `AttemptRecord`.
+
+        Args:
+            trace_id: The trial's trace.
+            attempt_span_id: That attempt's span; only its subtree is read.
+        """
+        raise NotImplementedError
+
     def evaluator_view(self, trace_id: int) -> EvaluatorView:
+        """One walk over the trial's `evaluator {name}` spans: judge usage, errors, and labels."""
         raise NotImplementedError
 
     def release(self, trace_ids: Iterable[int]) -> None:

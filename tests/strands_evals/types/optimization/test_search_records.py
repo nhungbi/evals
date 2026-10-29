@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from strands_evals.types.optimization import MergePlan, Observation, Patch, SelectionStep
+from strands_evals.types.optimization import Evidence, Observation, Patch
 
 
 def _canonical(values):
@@ -36,38 +36,47 @@ def test_canonical_json_of_values_is_unchanged_by_a_round_trip():
 def test_observation_round_trips_through_json():
     observation = Observation(
         patch=Patch(updates={"max_turns": 3}, rationale="fewer turns", state={"trial": 4}),
-        scalar=0.75,
-        outcome="admitted",
-        reason="not this iteration's best",
+        candidate_id="abc123def456",
+        values={"max_turns": 3, "system_prompt": "Be brief."},
+        objective=0.75,
+        outcome="infeasible",
+        reason="tokens <= 4000: P(met) 0.62 < 0.9",
+        violations=[210.0],
     )
 
     restored = Observation.model_validate_json(observation.model_dump_json())
 
     assert restored == observation
+    assert restored.source_id is None
 
 
-def test_observation_rejects_an_unknown_outcome():
+def test_observation_rejects_a_gate_loop_outcome():
     with pytest.raises(ValidationError):
-        Observation(patch=Patch(updates={}, rationale=""), scalar=None, outcome="won", reason="")
+        Observation(
+            patch=Patch(updates={}, rationale=""),
+            candidate_id=None,
+            values=None,
+            objective=None,
+            outcome="accepted",
+            reason="",
+            violations=None,
+        )
 
 
-def test_selection_step_with_merge_round_trips_through_json():
-    step = SelectionStep(
-        parent_id="aaa",
-        merge=MergePlan(
-            first="aaa",
-            second="bbb",
-            ancestor="ccc",
-            values={"system_prompt": "Be brief.", "temperature": 0.2},
-            from_first=("system_prompt",),
-            from_second=("temperature",),
-        ),
+def test_evidence_round_trips_through_json():
+    evidence = Evidence(
+        candidate_id="abc123def456",
+        values={"temperature": 0.2, "use_cache": True},
+        origin="numbers",
+        objective=None,
+        violations=None,
+        outcome="ineligible",
     )
 
-    restored = SelectionStep.model_validate_json(step.model_dump_json())
+    restored = Evidence.model_validate_json(evidence.model_dump_json())
 
-    assert restored == step
-    assert isinstance(restored.merge.from_first, tuple)
+    assert restored == evidence
+    assert type(restored.values["use_cache"]) is bool
 
 
 def test_records_are_frozen():

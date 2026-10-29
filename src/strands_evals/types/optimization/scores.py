@@ -1,4 +1,4 @@
-"""Scores, splits, and verdicts for the optimizer."""
+"""Scores, splits, labels, and the end phase's records for the optimizer."""
 
 from __future__ import annotations
 
@@ -7,54 +7,101 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from .estimates import Estimate
 
-class Splits(BaseModel):
-    """The run's one train / selection / holdout split; every split holds at least one case."""
+Range = tuple[float | None, float | None]  # (low, high); None = unbounded on that side
+
+
+class CaseSplit(BaseModel):
+    """The run's one train / validation / test split, from `Split.assign`; test may be empty."""
 
     model_config = ConfigDict(frozen=True)
 
     train: tuple[str, ...]
-    selection: tuple[str, ...]
-    holdout: tuple[str, ...]
+    validation: tuple[str, ...]
+    test: tuple[str, ...]
 
 
 class CandidateScores(BaseModel):
     """One candidate's scores on one split.
 
-    `per_case` is the mean of that case's measured per-run scalars; a run's scalar is measured only
-    when its status is completed. `per_metric` maps case name -> metric name -> that case's mean
-    (usage over completed and agent_failure runs), used by constraints.
+    A run counts when it is completed, or an `agent_failure` scored by `crash_score` (default "worst");
+    infrastructure and verifier failures are missing until a re-run succeeds.
+
+    Attributes:
+        objective_by_case: Case name -> mean of that case's measured per-run objectives. For Reflection's
+            per-case scores and the test report, never for ranking.
+        metrics_by_case: Case name -> metric name -> that case's mean, for every metric (each evaluator and
+            every usage metric), so `measured()` can report tokens and seconds next to the scores. Usage
+            means cover completed and `agent_failure` runs, so a crash's cost counts.
+        unavailable: Case name -> run index -> metric -> why scoring took the value out (e.g. outside the
+            evaluator's range).
+        objective_by_run: Case name -> each run's objective (None = not measured); written to the `score`
+            event.
+        metrics_by_run: Case name -> metric name -> each run's value; what `FitData.observations` is
+            built from.
+        objective: The measured objective: `Criteria.objective_value` over each goal metric's mean across
+            cases; what the ranking uses without a fit.
+        eligible: Every case has at least one run that counts for every goal metric; an evaluator N/A on a
+            case doesn't count against it. Only eligible candidates are fitted, ranked as parents, or chosen
+            as finalists.
+        failures: `agent_failure` runs.
     """
 
     model_config = ConfigDict(frozen=True)
 
     candidate_id: str
-    per_case: dict[str, float]
-    per_metric: dict[str, dict[str, float]]
-    per_run: dict[str, list[float | None]]
+    objective_by_case: dict[str, float]
+    metrics_by_case: dict[str, dict[str, float]]
+    unavailable: dict[str, dict[int, dict[str, str]]]
+    objective_by_run: dict[str, list[float | None]]
+    metrics_by_run: dict[str, dict[str, list[float | None]]]
+    objective: float | None
+    eligible: bool
     failures: int
 
     def mean(self, cases: Sequence[str]) -> float | None:
-        """Mean per-case score over the given cases that were measured; None if none were."""
+        """Mean per-case objective over the given cases that were measured; None if none were."""
         raise NotImplementedError
 
     def subset(self, cases: Sequence[str]) -> dict[str, float]:
-        """Per-case scores restricted to the given cases that were measured."""
+        """Per-case objectives restricted to the given cases that were measured."""
         raise NotImplementedError
 
 
+class Measured(BaseModel):
+    """One metric measured over a split's cases; for reporting only.
+
+    Attributes:
+        mean: Mean of the per-case means (the case is the unit).
+        ci90: 90% t-interval over the per-case means; None when `n < 2`.
+        n: Cases with a value.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    mean: float
+    ci90: tuple[float, float] | None
+    n: int
+
+
 class SplitScores(BaseModel):
-    """One `CandidateScores` per split, never mixed; a split not scored yet is empty."""
+    """One `CandidateScores` per split, never mixed.
+
+    The search (fit, selection, labels, observe, Reflection) reads `train`; the end phase's pick reads
+    `validation`; the test report reads `test`. Every scored candidate has train scores; `validation` is
+    None unless it was a finalist or the baseline, `test` None unless it was the champion or the baseline.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     train: CandidateScores
-    selection: CandidateScores
-    holdout: CandidateScores
+    validation: CandidateScores | None
+    test: CandidateScores | None
 
 
 class PairedComparison(BaseModel):
-    """Paired bootstrap result on the cases both candidates measured."""
+    """A paired t-interval on the cases both candidates measured (candidate - reference)."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -64,28 +111,85 @@ class PairedComparison(BaseModel):
     n_cases: int
 
 
-class AcceptanceVerdict(BaseModel):
-    """The holdout gate's decision for one challenger."""
+class CandidateLabel(BaseModel):
+    """A candidate's label on train, recorded in the `label` event; a label, never a filter.
 
-    model_config = ConfigDict(frozen=True)
+    `infeasible` means the ranking's feasibility says no (still a possible parent, ranked lower);
+    `ineligible` means some train case is unmeasured (out of the fit and the parents until a re-run
+    succeeds). `estimates`, `p_met`, `by_fit`, and `measured` are the ranking's view at this step
+    as a snapshot, never read on resume.
 
-    accepted: bool
-    reason: str
-    comparison: PairedComparison | None
-    violations: list[str]
-    coverage: float
-
-
-class Admission(BaseModel):
-    """Admission on the selection split.
-
-    `infeasible`: a constraint or coverage failed. `dominated`: the selection strategy said no.
-    `cases_led` is None unless admitted; computed by `admit` for every strategy, possibly `[]`.
+    Attributes:
+        outcome: `feasible`, `infeasible`, or `ineligible`.
+        reason: One sentence, e.g. "tokens <= 4000: P(met) 0.62 < 0.9".
+        violations: Each constraint not met, as the ranking assessed it.
+        estimates: Per goal metric (`Assessment.estimates`); empty when `by_fit` is False.
+        p_met: Per constraint (`Assessment.p_met`); empty when `by_fit` is False.
+        by_fit: False when assessed by measured means.
+        measured: Every metric measured on train, usage included; a metric with no value is left out.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    outcome: Literal["admitted", "infeasible", "dominated"]
+    outcome: Literal["feasible", "infeasible", "ineligible"]
     reason: str
     violations: list[str]
-    cases_led: list[str] | None
+    estimates: dict[str, Estimate]
+    p_met: dict[str, float]
+    by_fit: bool
+    measured: dict[str, Measured]
+
+
+class ValidationReport(BaseModel):
+    """How the end phase picked the champion on validation, saved in the `selected` event.
+
+    Attributes:
+        champion_id: What ships; the baseline's id when nothing feasible beats it.
+        objectives: Candidate id -> its validation objective under the validation fit; None when it
+            isn't eligible on validation.
+        estimates: Candidate id -> goal metric -> the validation fit's estimate; empty when assessed by
+            measured means.
+        infeasible: Candidate id -> why it can't ship (a constraint not met on validation, or not
+            eligible there).
+        measured: Candidate id -> every metric measured on validation.
+        problem: Why the validation fit wasn't used, e.g. "fewer than 2 eligible candidates" or
+            "the model raised: <Type>: <message>"; None when it was used.
+        reason: One sentence, e.g. "c3a1 highest on validation: 0.81 vs baseline 0.77".
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    champion_id: str
+    objectives: dict[str, float | None]
+    estimates: dict[str, dict[str, Estimate]]
+    infeasible: dict[str, str]
+    measured: dict[str, dict[str, Measured]]
+    problem: str | None
+    reason: str
+
+
+class TestReport(BaseModel):
+    """The champion against the baseline on test, saved in the `test` event; report only.
+
+    When the baseline ships, `champion_id == baseline_id`: the baseline is measured once and compared with
+    itself (differences 0, ratios 1).
+
+    Attributes:
+        objective: `Criteria.objective_value` per case, champion - baseline.
+        difference: Per goal metric.
+        ratio: Per goal metric; None when the baseline mean is 0 or the metric can be < 0.
+        missing: Candidate id -> test cases with no counted run (left out).
+        means: Champion and baseline -> every metric measured on test.
+    """
+
+    __test__ = False  # not a pytest test class
+
+    model_config = ConfigDict(frozen=True)
+
+    champion_id: str
+    baseline_id: str
+    objective: PairedComparison
+    difference: dict[str, PairedComparison]
+    ratio: dict[str, PairedComparison | None]
+    missing: dict[str, int]
+    means: dict[str, dict[str, Measured]]

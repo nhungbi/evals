@@ -24,6 +24,7 @@ def tool_descriptions(*tools: AgentTool, size_cap: int = 800, edit_instructions:
         edit_instructions: Shown to the proposer next to every description.
 
     Raises:
-        TypeError: A tool has no `tool_spec` setter.
+        TypeError: A tool has no `tool_spec` setter, or its name contains `.` or `/` (it becomes a
+            key segment).
     """
     raise NotImplementedError

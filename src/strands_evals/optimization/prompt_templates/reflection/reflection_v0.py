@@ -1,3 +1,3 @@
-"""System prompt for `Reflection` (filled in with step 9)."""
+"""System prompt for `Reflection`."""
 
 SYSTEM_PROMPT = ""

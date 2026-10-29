@@ -7,10 +7,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ..evaluation import EvaluationOutput
+from ..evaluation import EnvironmentState, EvaluationOutput, Interaction
 from ..trace import Session
 
-SplitName = Literal["train", "selection", "holdout"]
+SplitName = Literal["train", "validation", "test"]
 
 
 class TrialStatus(str, Enum):
@@ -30,7 +30,7 @@ class Usage(BaseModel):
     """Model usage summed over `chat` spans (never `invoke_agent` spans, which carry running totals).
 
     For a trial: the last attempt's agent spans, judge spans excluded. The same type holds
-    `judge_usage`, `search_cost`, and `judge_cost`.
+    `judge_usage`, `search_cost`, `judge_cost`, `retry_cost`, and `agent_cost`.
 
     Field names differ from `types.trace.TokenUsage` on purpose: they are the user-facing metric names
     (`USAGE_METRICS`), and `input_tokens` here includes cache tokens, which `TokenUsage.input_tokens`
@@ -46,6 +46,9 @@ class Usage(BaseModel):
             (unmeasured, not 0).
         model_calls: Number of `chat` spans.
         seconds: Duration of the `rollout` span (environment setup and teardown excluded).
+        models: Model ids that made the calls, first use first, from each `chat` span's
+            `gen_ai.request.model`; `[]` when no span has it. Summing two usages joins the lists in
+            first-use order. For `Patch.usage`, the proposer agent's configured model id.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -57,13 +60,58 @@ class Usage(BaseModel):
     cache_write_tokens: int | None
     model_calls: int
     seconds: float
+    models: list[str]
+
+    @classmethod
+    def zero(cls) -> Usage:
+        """No usage: every count 0, cache tokens None (unmeasured), no models; the start of every sum."""
+        raise NotImplementedError
+
+    def __add__(self, other: Usage) -> Usage:
+        """Field by field; cache tokens None + None = None, None + x = x; `models` joined in first-use order.
+
+        Totals are `sum(usages, Usage.zero())`.
+        """
+        raise NotImplementedError
+
+
+class AttemptRecord(BaseModel):
+    """One earlier attempt of a trial, kept for reporting; no `Session`.
+
+    Two sources, both oldest first: attempts `Experiment` retried on throttling inside one task span,
+    and a saved record that a later re-run pass replaced (its own `earlier` list, then itself).
+
+    Attributes:
+        status: What that attempt ended as (`infrastructure_invalid`, or `verifier_invalid` before a
+            judge-only re-run).
+        error_type: The exception type, if it raised.
+        error: The exception message, if it raised.
+        usage: What the agent spent in it; zero for a judge-only re-run, which reuses the task output.
+        judge_usage: What its judges spent; zero for a throttled attempt `Experiment` retried.
+        pass_index: The `TrialRunner` pass it ran in (0 = first; retried throttling keeps its pass).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    status: TrialStatus
+    error_type: str | None
+    error: str | None
+    usage: Usage
+    judge_usage: Usage
+    pass_index: int
 
 
 class TrialRecord(BaseModel):
     """One case x one run of one candidate.
 
-    Stores no objective scalar: scoring computes each run's scalar from `evaluations` and `usage`.
-    Each evaluator name is in exactly one of `evaluations` and `evaluator_errors`.
+    Stores no objective: scoring computes each run's objective from `evaluations` and `usage`.
+    Each evaluator name is in exactly one of `evaluations` and `evaluator_errors`; `details` has the same
+    keys as `evaluations`: each evaluator's own outputs (one per tool call or turn for tool- and
+    turn-level evaluators), so reports rebuilt from the records match what `Experiment` returned and
+    Reflection sees per-row reasons. Status, metrics,
+    usage, and the budget read the last attempt; `earlier` is for reporting only, and
+    `attempts == len(earlier) + 1`. `output` is saved as returned when JSON-serializable, else as
+    `str(output)`.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -76,11 +124,13 @@ class TrialRecord(BaseModel):
     error_type: str | None
     error: str | None
     attempts: int
+    earlier: list[AttemptRecord]
     output: Any
     trajectory: list[Any] | Session | None
-    interactions: list | None
-    environment_state: list | None
+    interactions: list[Interaction] | None
+    environment_state: list[EnvironmentState] | None
     evaluations: dict[str, EvaluationOutput]
+    details: dict[str, list[EvaluationOutput]]
     evaluator_errors: dict[str, str]
     usage: Usage
     judge_usage: Usage

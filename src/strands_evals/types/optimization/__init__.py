@@ -1,29 +1,44 @@
 """Data records for the optimizer. Imports nothing from `strands_evals.optimization` at runtime."""
 
+from .estimates import Estimate
 from .results import IterationRecord, ProposalOutcome
-from .scores import AcceptanceVerdict, Admission, CandidateScores, PairedComparison, Splits, SplitScores
-from .search import Observation, ObservationOutcome, Patch, ReflectionRecord, Value
-from .selection import MergePlan, SelectionStep
-from .trials import SplitName, TrialRecord, TrialStatus, Usage
+from .scores import (
+    CandidateLabel,
+    CandidateScores,
+    CaseSplit,
+    Measured,
+    PairedComparison,
+    Range,
+    SplitScores,
+    TestReport,
+    ValidationReport,
+)
+from .search import CandidateSummary, Evidence, Observation, ObservationOutcome, Patch, Value, Values
+from .trials import AttemptRecord, SplitName, TrialRecord, TrialStatus, Usage
 
 __all__ = [
-    "AcceptanceVerdict",
-    "Admission",
+    "AttemptRecord",
+    "CandidateLabel",
     "CandidateScores",
+    "CandidateSummary",
+    "CaseSplit",
+    "Estimate",
+    "Evidence",
     "IterationRecord",
-    "MergePlan",
+    "Measured",
     "Observation",
     "ObservationOutcome",
     "PairedComparison",
     "Patch",
     "ProposalOutcome",
-    "ReflectionRecord",
-    "SelectionStep",
+    "Range",
     "SplitName",
     "SplitScores",
-    "Splits",
+    "TestReport",
     "TrialRecord",
     "TrialStatus",
     "Usage",
+    "ValidationReport",
     "Value",
+    "Values",
 ]

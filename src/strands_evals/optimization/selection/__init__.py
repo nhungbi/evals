@@ -1,1 +1,1 @@
-"""Picks the parent, never the champion."""
+"""Picks the parent, never what ships."""

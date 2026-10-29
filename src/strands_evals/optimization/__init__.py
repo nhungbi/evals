@@ -1,72 +1,112 @@
 """Eval-driven optimization of agent prompts, components, and numeric knobs."""
 
 from ..types.optimization import (
-    AcceptanceVerdict,
+    AttemptRecord,
+    CandidateScores,
+    CandidateSummary,
+    CaseSplit,
+    Estimate,
+    Evidence,
     IterationRecord,
-    MergePlan,
+    Measured,
     Observation,
     ObservationOutcome,
     PairedComparison,
     Patch,
     ProposalOutcome,
-    ReflectionRecord,
-    SelectionStep,
+    Range,
+    SplitName,
+    TestReport,
+    TrialRecord,
     TrialStatus,
     Usage,
+    ValidationReport,
     Value,
+    Values,
 )
-from .acceptance.budget import Budget
-from .acceptance.gate import Gate
-from .candidates.candidate import Candidate
+from .candidate import Candidate
 from .declaration.files import FileText, JsonField, SkillLibrary
 from .declaration.markers import Choice, Component, Float, Int, OneOf, TextValue, choice, component
 from .declaration.space import FileSource, Marker, ParamInfo, ParamKind, Space
 from .declaration.tools import ToolDescriptions, tool_descriptions
 from .declaration.tunable import BuildContext, TunableFactory, tunable
+from .end_phase import FinalistSelection
 from .execution.rollout import EnvironmentFn, RolloutFn, TaskFn
+from .execution.status import TrialInvalid
 from .optimizer import Optimizer
 from .result import CandidateView, Grain, OptimizationResult
-from .rewards import RewardFunction, RewardFunctionEvaluator, RewardResult
-from .scoring.objectives import AtLeast, AtMost, Constraint, Maximize, MetricTarget, Minimize, Objective, WeightedSum
-from .search.blocks import Alternate, Block, Joint, Schedule, Search
+from .score_model.bayesbench import BayesBenchModel
+from .score_model.design import design
+from .score_model.effects import effects
+from .score_model.protocols import Fit, FitData, MetricModel, ScoreModel
+from .score_model.ranking import Assessment, LowerBound, Mean, PickRule, p_met
+from .scoring.metrics import MetricRegistry
+from .scoring.objectives import (
+    AtLeast,
+    AtMost,
+    Constraint,
+    Criteria,
+    Maximize,
+    MetricTarget,
+    Minimize,
+    Objective,
+    WeightedSum,
+)
+from .scoring.rewards import RewardFunction, RewardFunctionEvaluator, RewardResult
+from .search.blocks import Alternate, Block, Joint, Nested, Schedule, ScheduleContext, Search, Step
 from .search.method import Method, ProposalRequest
 from .search.reflection import Reflection
+from .search.thompson import Thompson
 from .search.tpe import TPE
 from .selection.base import Selection, SelectionContext
-from .selection.frontier import CaseFrontier
-from .selection.greedy import Greedy
+from .selection.top_ranked import TopRanked
+from .setup.budget import Budget
+from .setup.splits import Split
 
 __all__ = [
-    "AcceptanceVerdict",
     "Alternate",
+    "Assessment",
     "AtLeast",
     "AtMost",
+    "AttemptRecord",
+    "BayesBenchModel",
     "Block",
-    "BuildContext",
     "Budget",
+    "BuildContext",
     "Candidate",
+    "CandidateScores",
+    "CandidateSummary",
     "CandidateView",
-    "CaseFrontier",
+    "CaseSplit",
     "Choice",
     "Component",
     "Constraint",
+    "Criteria",
     "EnvironmentFn",
+    "Estimate",
+    "Evidence",
     "FileSource",
     "FileText",
+    "FinalistSelection",
+    "Fit",
+    "FitData",
     "Float",
-    "Gate",
     "Grain",
-    "Greedy",
     "Int",
     "IterationRecord",
     "Joint",
     "JsonField",
+    "LowerBound",
     "Marker",
     "Maximize",
-    "MergePlan",
+    "Mean",
+    "Measured",
     "Method",
+    "MetricModel",
+    "MetricRegistry",
     "MetricTarget",
     "Minimize",
+    "Nested",
     "Objective",
     "Observation",
     "ObservationOutcome",
@@ -77,32 +117,47 @@ __all__ = [
     "ParamInfo",
     "ParamKind",
     "Patch",
+    "PickRule",
     "ProposalOutcome",
     "ProposalRequest",
+    "Range",
     "Reflection",
-    "ReflectionRecord",
     "RewardFunction",
     "RewardFunctionEvaluator",
     "RewardResult",
     "RolloutFn",
     "Schedule",
+    "ScheduleContext",
+    "ScoreModel",
     "Search",
     "Selection",
     "SelectionContext",
-    "SelectionStep",
     "SkillLibrary",
     "Space",
+    "Split",
+    "SplitName",
+    "Step",
     "TPE",
     "TaskFn",
+    "TestReport",
     "TextValue",
+    "Thompson",
     "ToolDescriptions",
+    "TopRanked",
+    "TrialInvalid",
+    "TrialRecord",
     "TrialStatus",
     "TunableFactory",
     "Usage",
+    "ValidationReport",
     "Value",
+    "Values",
     "WeightedSum",
     "choice",
     "component",
+    "design",
+    "effects",
+    "p_met",
     "tool_descriptions",
     "tunable",
 ]
