@@ -123,6 +123,7 @@ class TrialRunner:
         `BudgetTracker.allowance(phase=...)` and caps only the re-run passes; trials left when it runs out
         stay `infrastructure_invalid`. A judge-only infrastructure failure re-runs just the judges on the
         saved output, for 0 rollouts. A record a re-run replaces moves into the new record's `earlier`.
+        Each record's and attempt's `rollouts` is set to what it cost (1 when the agent ran, else 0).
         Each trial is saved as soon as it finishes.
 
         Args:

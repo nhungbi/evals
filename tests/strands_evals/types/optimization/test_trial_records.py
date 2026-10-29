@@ -90,6 +90,7 @@ def _record(trajectory):
         evaluator_errors={},
         usage=_usage(),
         judge_usage=_usage(),
+        rollouts=1,
     )
 
 

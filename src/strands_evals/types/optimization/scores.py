@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -45,7 +44,8 @@ class CandidateScores(BaseModel):
         eligible: Every case has at least one run that counts for every goal metric; an evaluator N/A on a
             case doesn't count against it. Only eligible candidates are fitted, ranked as parents, or chosen
             as finalists.
-        failures: `agent_failure` runs.
+        failures: `agent_failure` trials on this split (each trial's last attempt); infrastructure and
+            verifier failures aren't counted.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -59,14 +59,6 @@ class CandidateScores(BaseModel):
     objective: float | None
     eligible: bool
     failures: int
-
-    def mean(self, cases: Sequence[str]) -> float | None:
-        """Mean per-case objective over the given cases that were measured; None if none were."""
-        raise NotImplementedError
-
-    def subset(self, cases: Sequence[str]) -> dict[str, float]:
-        """Per-case objectives restricted to the given cases that were measured."""
-        raise NotImplementedError
 
 
 class Measured(BaseModel):
@@ -122,7 +114,8 @@ class CandidateLabel(BaseModel):
     Attributes:
         outcome: `feasible`, `infeasible`, or `ineligible`.
         reason: One sentence, e.g. "tokens <= 4000: P(met) 0.62 < 0.9".
-        violations: Each constraint not met, as the ranking assessed it.
+        unmet: Each constraint not met, as the ranking assessed it, as a sentence (e.g. "tokens <= 4000:
+            P(met) 0.62 < 0.9"); unlike the per-constraint margins elsewhere named `violations`.
         estimates: Per goal metric (`Assessment.estimates`); empty when `by_fit` is False.
         p_met: Per constraint (`Assessment.p_met`); empty when `by_fit` is False.
         by_fit: False when assessed by measured means.
@@ -133,7 +126,7 @@ class CandidateLabel(BaseModel):
 
     outcome: Literal["feasible", "infeasible", "ineligible"]
     reason: str
-    violations: list[str]
+    unmet: list[str]
     estimates: dict[str, Estimate]
     p_met: dict[str, float]
     by_fit: bool
@@ -145,8 +138,8 @@ class ValidationReport(BaseModel):
 
     Attributes:
         champion_id: What ships; the baseline's id when nothing feasible beats it.
-        objectives: Candidate id -> its validation objective under the validation fit; None when it
-            isn't eligible on validation.
+        objectives: Candidate id -> its validation objective under the validation fit, or by measured
+            validation means when `problem` is set; None when it isn't eligible on validation.
         estimates: Candidate id -> goal metric -> the validation fit's estimate; empty when assessed by
             measured means.
         infeasible: Candidate id -> why it can't ship (a constraint not met on validation, or not
@@ -172,13 +165,13 @@ class TestReport(BaseModel):
     """The champion against the baseline on test, saved in the `test` event; report only.
 
     When the baseline ships, `champion_id == baseline_id`: the baseline is measured once and compared with
-    itself (differences 0, ratios 1).
+    itself (differences 0, ratios 1), and `missing` and `means` hold one key.
 
     Attributes:
         objective: `Criteria.objective_value` per case, champion - baseline.
         difference: Per goal metric.
         ratio: Per goal metric; None when the baseline mean is 0 or the metric can be < 0.
-        missing: Candidate id -> test cases with no counted run (left out).
+        missing: Candidate id -> number of test cases with no counted run (left out).
         means: Champion and baseline -> every metric measured on test.
     """
 

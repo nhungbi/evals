@@ -89,6 +89,7 @@ class AttemptRecord(BaseModel):
         usage: What the agent spent in it; zero for a judge-only re-run, which reuses the task output.
         judge_usage: What its judges spent; zero for a throttled attempt `Experiment` retried.
         pass_index: The `TrialRunner` pass it ran in (0 = first; retried throttling keeps its pass).
+        rollouts: What it cost the budget, as `TrialRecord.rollouts`.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -99,6 +100,7 @@ class AttemptRecord(BaseModel):
     usage: Usage
     judge_usage: Usage
     pass_index: int
+    rollouts: int
 
 
 class TrialRecord(BaseModel):
@@ -108,10 +110,15 @@ class TrialRecord(BaseModel):
     Each evaluator name is in exactly one of `evaluations` and `evaluator_errors`; `details` has the same
     keys as `evaluations`: each evaluator's own outputs (one per tool call or turn for tool- and
     turn-level evaluators), so reports rebuilt from the records match what `Experiment` returned and
-    Reflection sees per-row reasons. Status, metrics,
-    usage, and the budget read the last attempt; `earlier` is for reporting only, and
-    `attempts == len(earlier) + 1`. `output` is saved as returned when JSON-serializable, else as
-    `str(output)`.
+    Reflection sees per-row reasons. Status, metrics, and usage read the last attempt; `earlier` is for
+    reporting and the budget only, and `attempts == len(earlier) + 1`. `output` is saved as returned when
+    JSON-serializable, else as `str(output)`.
+
+    `rollouts` is what the last attempt cost the budget: 1 when the agent ran (a first pass or a re-run
+    pass), 0 for a judge-only re-run on the saved output and for an attempt `Experiment` retried on
+    throttling. The trial's total is `rollouts + sum(a.rollouts for a in earlier)`; resume rebuilds `spent`
+    from the last record per key this way, with nothing counted twice, because a replacing record's
+    `earlier` holds the replaced record and its own `earlier`.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -134,3 +141,4 @@ class TrialRecord(BaseModel):
     evaluator_errors: dict[str, str]
     usage: Usage
     judge_usage: Usage
+    rollouts: int

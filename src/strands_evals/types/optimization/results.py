@@ -12,9 +12,9 @@ from .search import ObservationOutcome
 class ProposalOutcome(BaseModel):
     """One proposal of one iteration.
 
-    `number` is the display number (None for an invalid patch); `block` is the proposing block's name;
-    `status` uses the same vocabulary as `Observation.outcome`; `train_score` is the objective it was
-    observed with (`Observation.objective`).
+    `number` is the display number (None for an invalid patch); `origin` is the proposing block's name
+    (`Candidate.origin`); `status` uses the same vocabulary as `Observation.outcome`; `objective` is the
+    objective it was observed with (`Observation.objective`).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -22,11 +22,11 @@ class ProposalOutcome(BaseModel):
     candidate_id: str | None
     number: int | None
     parent_id: str
-    block: str
+    origin: str
     changed_keys: list[str]
     rationale: str
     status: ObservationOutcome
-    train_score: float | None
+    objective: float | None
 
 
 class IterationRecord(BaseModel):
