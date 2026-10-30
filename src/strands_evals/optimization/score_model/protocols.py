@@ -1,4 +1,7 @@
-"""The score model's interfaces; a custom score model implements `ScoreModel`, `Fit`, and `MetricModel`.
+"""The score model's interfaces; a custom score model subclasses `ScoreModel` and returns a `Fit`.
+
+`ScoreModel` is an ABC because users subclass it (as `Method`, `Selection`, `Schedule`); `Fit` and
+`MetricModel` are Protocols, met by whatever objects a model returns.
 
 One model per goal metric (each objective term's metric and each constraint metric), never a
 model of the combined objective: each metric keeps its own units and range, and the objective is combined
@@ -8,9 +11,10 @@ extra, and every exported signature must resolve without it.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 from ...types.optimization import Estimate, Values
 from ..declaration.space import Space
@@ -54,6 +58,7 @@ class MetricModel(Protocol):
         self,
         values: Values,
         reference: Values,
+        *,
         candidate: str | None = None,
         reference_candidate: str | None = None,
     ) -> Estimate:
@@ -64,6 +69,7 @@ class MetricModel(Protocol):
         self,
         values: Values,
         reference: Values,
+        *,
         candidate: str | None = None,
         reference_candidate: str | None = None,
     ) -> Estimate:
@@ -109,11 +115,16 @@ class Fit(Protocol):
         ...
 
 
-class ScoreModel(Protocol):
-    """What `Optimizer(score_model=...)` takes."""
+class ScoreModel(ABC):
+    """What `Optimizer(score_model=...)` takes; `BayesBenchModel` is the default.
 
-    name: str
+    `effects.json` and `effects()` are filled only for a `BayesBenchModel` fit in v1; another model's run
+    writes `effects.json` with no effects and a reason.
+    """
 
+    name: ClassVar[str]
+
+    @abstractmethod
     def fit(self, data: FitData, *, previous: Fit | None = None) -> Fit | None:
         """Fit every goal metric; None when fewer than 2 candidates are eligible.
 
@@ -125,8 +136,7 @@ class ScoreModel(Protocol):
             data: The eligible candidates' observations on one split.
             previous: The last successful fit, or None.
         """
-        ...
 
     def config(self) -> dict[str, Any]:
-        """JSON-serializable settings, stored in `run.json` and compared on resume."""
-        ...
+        """JSON-serializable settings, stored in `run.json` and compared on resume; default `{}`."""
+        return {}

@@ -50,11 +50,11 @@ class EventLog:
       `diagnostics`; one per step, `fitted=false` also when the step scored nothing new.
     - `select`: `parent_id`, `strategy`.
     - `label`: `candidate_id`, `label` (`CandidateLabel`).
-    - `invalid`: `block`, `attempt`, `updates`, `reason` (no candidate).
-    - `duplicate`: `block`, `attempt`, `candidate_id` (the existing one); `patch` and `round` for a round's
+    - `invalid`: `block`, `redraw`, `updates`, `reason` (no candidate).
+    - `duplicate`: `block`, `redraw`, `candidate_id` (the existing one); `patch` and `round` for a round's
       opener.
     - `unscored`: `candidate_id`, `pending`, `remaining`, `reserve`.
-    - `proposer_retry`, `proposer_error`: `block`, `attempt`, `error_type`, `error`.
+    - `proposer_retry`, `proposer_error`: `block`, `redraw`, `error_type`, `error`.
     - `screened`: `block`, `key`, `reason`.
     - `resume`: `spent`, `budget`, `code` (the resuming strands-evals: version, git commit, dirty).
     - `stop`: `reason` (a `stop_reason`, or `"setup"` when the baseline isn't eligible), `message`.

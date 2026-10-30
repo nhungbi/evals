@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from .protocols import Fit, FitData, ScoreModel
 
@@ -21,7 +21,7 @@ class BayesBenchModel(ScoreModel):
     Needs the `optimization` extra.
     """
 
-    name = "bayesbench"
+    name: ClassVar[str] = "bayesbench"
 
     def __init__(self) -> None:
         raise NotImplementedError

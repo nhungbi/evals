@@ -1,7 +1,7 @@
 """The one ranking: assessing candidates against the objective and constraints, from a fit or measured means.
 
 Shared by `TopRanked`, the finalists, inheritance fill, `Nested`'s round best, the order of
-`ProposalRequest.candidates`, and the candidate label (`label_candidate`, loop step 6). Here, left of
+`ProposalRequest.candidates`, and the candidate label (`label_candidate`). Here, left of
 `selection/` and `end_phase.py`, so neither imports the other. Without a fit, after a refit that raised
 (until one succeeds), and while any metric is flagged, every candidate is assessed by measured means.
 """
@@ -33,8 +33,8 @@ class Assessment:
     Attributes:
         objective: `Criteria.objective_value` over each goal metric's resolved estimate, or the measured
             objective (`CandidateScores.objective`) when assessed by measured means.
-        feasible: Every constraint has P(met) >= `feasibility` under the fit, or is met on measured means.
-        violations: Per constraint, <= 0 when met: the metric's quantile at `feasibility` against the limit,
+        feasible: Every constraint has P(met) >= `criteria.feasibility` under the fit, or is met on measured means.
+        violations: Per constraint, <= 0 when met: the metric's quantile at `criteria.feasibility` against the limit,
             or the measured mean against the limit.
         violation: The sum of the positive violations (0 when feasible); what "least violation" ranks by.
         p_met: Per constraint; empty when assessed by measured means.
@@ -90,7 +90,6 @@ def assess(
     *,
     fit: Fit | None,
     criteria: Criteria,
-    feasibility: float,
     values: Mapping[str, Values],
     measured: Mapping[str, CandidateScores],
     rule: PickRule = _MEAN,
@@ -98,14 +97,13 @@ def assess(
     """Assess each candidate from the fit, or from measured means without a usable one.
 
     `rule` turns each objective term's `Estimate` into one number before `resolved()` and
-    `Criteria.objective_value`; constraints are unaffected (P(met) >= `feasibility`), and measured means
-    ignore it. The search always uses `Mean()`; only the final pick passes `FinalistSelection.rule`.
+    `Criteria.objective_value`; constraints are unaffected (P(met) >= `criteria.feasibility`), and measured
+    means ignore it. The search always uses `Mean()`; only the final pick passes `FinalPick.rule`.
 
     Args:
         ids: The candidates to assess.
         fit: The fit, or None.
-        criteria: The objective and constraints.
-        feasibility: P(met) a constraint needs.
+        criteria: The objective, constraints, and feasibility threshold.
         values: Candidate id -> values.
         measured: Candidate id -> its scores on the fitted split.
         rule: How an objective term's estimate becomes a number.
@@ -135,7 +133,7 @@ def rank(
 def p_met(constraint: Constraint, value: Estimate) -> float:
     """P(constraint holds), 0 to 1, under the metric's estimate.
 
-    Read by the ranking (feasible = P(met) >= `feasibility` for every constraint) and by the final pick
+    Read by the ranking (feasible = P(met) >= `criteria.feasibility` for every constraint) and by the final pick
     under the validation fit.
     """
     raise NotImplementedError
@@ -146,13 +144,12 @@ def label_candidate(
     assessment: Assessment | None,
     *,
     criteria: Criteria,
-    feasibility: float,
 ) -> CandidateLabel:
     """The candidate label: `feasible`, `infeasible`, or `ineligible`, as the step's ranking assessed it.
 
     A label recorded in the event log, never a filter; train data only.
 
-    Feasibility is the ranking's own: P(met) >= `feasibility` under the fit,
+    Feasibility is the ranking's own: P(met) >= `criteria.feasibility` under the fit,
     measured means without a fit or while any metric is flagged, so the label always matches how the loop
     treated the candidate. A snapshot: later refits can change how the ranking sees it. An infeasible
     candidate stays a possible parent, ranked after the feasible ones; an ineligible one is out of the fit
@@ -161,7 +158,6 @@ def label_candidate(
     Args:
         candidate: Its train scores (`SplitScores.train`).
         assessment: Its `Assessment` from the step's ranking right after the refit; None when ineligible.
-        criteria: Names the constraints in the reasons.
-        feasibility: P(met) a constraint needs.
+        criteria: Names the constraints in the reasons; holds the feasibility threshold.
     """
     raise NotImplementedError

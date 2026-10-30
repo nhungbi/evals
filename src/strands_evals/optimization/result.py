@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..types.evaluation_report import EvaluationReport
-from ..types.optimization import IterationRecord, SplitName, TestReport, Usage, ValidationReport, Value
+from ..types.optimization import IterationRecord, SplitName, StopReason, TestReport, Usage, ValidationReport, Value
 from .candidate import Candidate
 from .declaration.space import Space
 
@@ -60,18 +60,20 @@ class OptimizationResult:
         best: The champion, `validation.champion_id` (the baseline when nothing feasible beats it).
         validation: How the champion was picked on validation: every finalist's objective and estimates, and
             why any was infeasible.
-        test: The champion against the baseline on test, report only; None without test cases or when it
-            couldn't be afforded (the reason is in the `test` event).
+        test: The champion against the baseline on test, report only: a negative `mean_diff` is possible
+            and never changes what ships. None without test cases or when it couldn't be afforded
+            (`test_reason` says which).
+        test_reason: Why `test` is None (the `test` event's reason); None when it ran.
         effects: `effects.json`: per metric and option from the search fit, or empty with the reason.
         stop_reason: Why the search stopped: `budget` (what's left after the end-phase reserves can't score
             one more candidate), `iterations` (the cap), `exhausted` (every block produced no candidates on
             its latest turn, or the schedule had nothing left), or `proposer_error` (a method raised). The
-            end phase runs after any of them.
+            end phase runs after any of them. Never `setup`: a setup stop raises instead of returning.
         agent_cost: The agent's own usage per split (each trial's last attempt): train = the search,
             validation and test = the end phase.
         search_cost: Total proposer usage.
-        judge_cost: Total judge usage across trials, earlier attempts included.
-        retry_cost: The agent's usage in earlier attempts (`TrialRecord.earlier`).
+        judge_cost: Judge usage per trial's last attempt, as `agent_cost` counts the agent's.
+        retry_cost: Agent and judge usage in earlier attempts (`TrialRecord.earlier`).
     """
 
     run_id: str
@@ -80,14 +82,20 @@ class OptimizationResult:
     best: CandidateView
     validation: ValidationReport
     test: TestReport | None
+    test_reason: str | None
     effects: dict[str, Any]
     iterations: list[IterationRecord]
     rollouts_spent: int
-    stop_reason: Literal["budget", "iterations", "exhausted", "proposer_error"]
+    stop_reason: StopReason
     agent_cost: dict[SplitName, Usage]
     search_cost: Usage
     judge_cost: Usage
     retry_cost: Usage
+
+    @property
+    def improved(self) -> bool:
+        """Whether something other than the baseline ships (`best.id != baseline.id`)."""
+        raise NotImplementedError
 
     def summary(self) -> str:
         raise NotImplementedError

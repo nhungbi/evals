@@ -20,11 +20,10 @@ class SelectionContext:
     A dataclass, not a record: it holds the fit and the RNG, and is never saved.
 
     Attributes:
-        pool: The step's possible parents (`Step.parents`, else every eligible candidate so far, the
-            baseline and infeasible ones included), in scoring order; never empty. Ineligible candidates
-            and invalid, duplicate, or unscored proposals are not in it.
-        assessments: The ranking's `Assessment` for every pool candidate.
-        ranking: The pool in ranking order.
+        ranking: The step's possible parents (`Step.parents`, else every eligible candidate so far, the
+            baseline and infeasible ones included), in ranking order (ties: earlier first); never empty.
+            Ineligible candidates and invalid, duplicate, or unscored proposals are not in it.
+        assessments: The ranking's `Assessment` for every candidate in `ranking`.
         scores: Candidate id -> case name -> train objective (`CandidateScores.objective_by_case`).
         values: Candidate id -> key -> value.
         parents: Candidate id -> parent id (None for the baseline).
@@ -35,9 +34,8 @@ class SelectionContext:
         rng: `random.Random(f"{seed}:{iteration}")`, so a resumed run picks the same parents.
     """
 
-    pool: Sequence[str]
-    assessments: Mapping[str, Assessment]
     ranking: Sequence[str]
+    assessments: Mapping[str, Assessment]
     scores: Mapping[str, Mapping[str, float]]
     values: Mapping[str, Values]
     parents: Mapping[str, str | None]
@@ -63,7 +61,7 @@ class Selection(ABC):
 
     @abstractmethod
     def choose(self, ctx: SelectionContext) -> str:
-        """The parent's id; one outside `ctx.pool` makes the optimizer raise `ValueError`.
+        """The parent's id; one outside `ctx.ranking` makes the optimizer raise `ValueError`.
 
         Take all randomness from `ctx.rng`. Beyond the ranking, a custom strategy can explore: random
         top-k, Thompson over sampled effects, UCB (mean + k·sd), annealing over the iteration, novelty

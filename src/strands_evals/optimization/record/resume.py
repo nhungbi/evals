@@ -11,11 +11,27 @@ from ...types.optimization import (
     IterationRecord,
     Observation,
     Patch,
+    StopReason,
     TestReport,
     Usage,
     ValidationReport,
 )
 from .run_directory import RunDirectory
+
+
+@dataclass(frozen=True)
+class FitReplay:
+    """One `fit` event, replayed in order on resume.
+
+    Attributes:
+        ids: The candidates fitted.
+        fitted: False when the step scored nothing new or the model returned None or raised.
+        error: `"<Type>: <message>"` when the model raised; then no fit is in use from there.
+    """
+
+    ids: list[str]
+    fitted: bool
+    error: str | None
 
 
 @dataclass(frozen=True)
@@ -43,8 +59,8 @@ class ResumeState:
             through each block's method before the first new iteration.
         history: Parents chosen so far (`SelectionContext.history`).
         open_rounds: `Nested` rounds started but not finished, outermost first.
-        fits: Each `fit` event's (candidate ids, fitted, error), in order: fitted ones are refitted, unfitted
-            ones without an error kept the previous fit, ones with an error mean no fit in use from there.
+        fits: Each `fit` event, in order: fitted ones are refitted, unfitted ones without an error kept the
+            previous fit, ones with an error mean no fit in use from there.
         iterations: Rebuilt from the events, so the result covers the whole run.
         search_cost: Summed from the `observe` events' `Patch.usage`.
         finalists: Already chosen by the end phase, reused rather than re-ranked.
@@ -64,7 +80,7 @@ class ResumeState:
     feedback: dict[str, list[Observation | Evidence]]
     history: list[str]
     open_rounds: list[OpenRound]
-    fits: list[tuple[list[str], bool, str | None]]
+    fits: list[FitReplay]
     iterations: list[IterationRecord]
     search_cost: Usage
     finalists: list[str] | None
@@ -72,16 +88,18 @@ class ResumeState:
     test_done: bool
     test: TestReport | None
     test_reason: str | None
-    stop_reason: str | None
+    stop_reason: StopReason | None
 
 
 def load_state(run: RunDirectory, *, config: Mapping[str, Any]) -> ResumeState:
     """Compare `config` with `run.json` field by field, then rebuild the state from the event log.
 
-    Compared: cases, split (settings and case lists), `runs_per_candidate`, `crash_score`, `feasibility`,
-    space (every stored `ParamInfo` field), seed, selection, score model, finalists, search (blocks, methods
-    and their `config()`, keys, schedule name and `config()`, redraws), objective and constraints,
-    `proposals_per_iteration`, `rerun_passes`. Budget, `max_workers`, and `on_iteration` may differ.
+    Compared (what `Optimizer.resume` is given again): cases, space (every stored `ParamInfo` field),
+    objective and constraints, search (blocks, methods and their `config()`, keys, schedule name and
+    `config()`, redraws), selection (name and `config()`), score model (name and `config()`).
+    Read (never passed again, rebuilt from `run.json`): split (settings, seed used, and case lists),
+    `runs_per_candidate`, `crash_score`, `feasibility`, seed, `proposals_per_iteration`, `rerun_passes`,
+    and the final pick (`FinalPick.from_config`). Budget, `max_workers`, and `on_iteration` may differ.
 
     Args:
         run: The reopened run directory.

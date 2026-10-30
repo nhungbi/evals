@@ -125,6 +125,8 @@ class Criteria:
         constraints: The constraints, metric names resolved.
         registry: The run's metric registry.
         crash_score: What an `agent_failure` run's evaluator metrics count as.
+        feasibility: The P(met) threshold a constraint needs to count as met (not a fraction of cases);
+            read by the ranking, the candidate label, and the final pick.
         goal_metrics: The metrics the score model fits, one model each: the objective's metrics, then the
             constraints' metrics, each once, in that order.
     """
@@ -133,6 +135,7 @@ class Criteria:
     constraints: tuple[Constraint, ...]
     registry: MetricRegistry
     crash_score: Literal["worst"] | float | None
+    feasibility: float
     goal_metrics: tuple[str, ...]
 
     def __init__(
@@ -142,6 +145,7 @@ class Criteria:
         registry: MetricRegistry,
         *,
         crash_score: Literal["worst"] | float | None = "worst",
+        feasibility: float = 0.9,
     ):
         """`objective=None` means maximize the mean of every evaluator's score.
 
@@ -155,10 +159,13 @@ class Criteria:
             constraints: Bounds every shipped candidate must meet.
             registry: Resolves the metric names and gives their ranges.
             crash_score: What an `agent_failure` run's evaluator metrics count as.
+            feasibility: The P(met) threshold a constraint needs (`Optimizer(feasibility=)`), 0 < x < 1.
 
         Raises:
-            ValueError: A metric name is unknown or ambiguous; or, inside a `WeightedSum`, the same metric
-                twice after resolution, or a metric with an unbounded range and no `scale=`.
+            ValueError: A metric name is unknown or ambiguous; inside a `WeightedSum`, the same metric
+                twice after resolution, or a metric with an unbounded range and no `scale=`; a lone
+                `Maximize` / `Minimize` with a non-default `weight` or `scale` (read only inside a
+                `WeightedSum`, so it would be silently ignored); `feasibility` outside (0, 1).
         """
         raise NotImplementedError
 
@@ -182,8 +189,10 @@ class Criteria:
         """
         raise NotImplementedError
 
-    def violations(self, metrics_by_case: Mapping[str, Mapping[str, float]]) -> list[str]:
-        """One message per violated constraint on measured means; a constraint never measured counts as violated.
+    def unmet(self, metrics_by_case: Mapping[str, Mapping[str, float]]) -> list[str]:
+        """One sentence per constraint not met on measured means; a constraint never measured counts as unmet.
+
+        Sentences, as `CandidateLabel.unmet`; the per-constraint margins are `Assessment.violations`.
 
         `metrics_by_case` maps case name -> metric name -> value, as `CandidateScores.metrics_by_case`.
         """

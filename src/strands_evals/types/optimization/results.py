@@ -8,12 +8,14 @@ from pydantic import BaseModel, ConfigDict
 
 from .search import ObservationOutcome
 
+StopReason = Literal["setup", "budget", "iterations", "exhausted", "proposer_error"]
+
 
 class ProposalOutcome(BaseModel):
     """One proposal of one iteration.
 
     `number` is the display number (None for an invalid patch); `origin` is the proposing block's name
-    (`Candidate.origin`); `status` uses the same vocabulary as `Observation.outcome`; `objective` is the
+    (`Candidate.origin`); `outcome` uses the same vocabulary as `Observation.outcome`; `objective` is the
     objective it was observed with (`Observation.objective`).
     """
 
@@ -25,7 +27,7 @@ class ProposalOutcome(BaseModel):
     origin: str
     changed_keys: list[str]
     rationale: str
-    status: ObservationOutcome
+    outcome: ObservationOutcome
     objective: float | None
 
 

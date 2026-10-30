@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, overload
 
-from ...types.optimization import Value, Values
+from ...types.optimization import Values
 from .space import Marker, Space
 
 
@@ -28,7 +28,7 @@ class BuildContext:
             `agent.json` a `JsonField` points into.
     """
 
-    values: Mapping[str, Value]
+    values: Values
     resolve: Callable[[str], Any]
     workspace: Path | None
 

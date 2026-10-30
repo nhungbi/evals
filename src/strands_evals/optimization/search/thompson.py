@@ -18,7 +18,7 @@ class Thompson(Method):
     candidate with those choices, else the parent with them. It proposes the best unmeasured combination
     that meets the drawn constraints, else the one with the least miss. With no fit or any metric flagged,
     an unmeasured option at random. The numpy `Generator` is seeded from
-    `f"{seed}:{iteration}:{attempt}:thompson"` through sha256, so resume replays it. Never a default block.
+    `f"{seed}:{iteration}:{redraw}:thompson"` through sha256, so resume replays it. Never a default block.
     """
 
     kinds: ClassVar[frozenset[ParamKind]] = frozenset({"one_of", "choice"})

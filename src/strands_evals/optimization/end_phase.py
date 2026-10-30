@@ -18,11 +18,12 @@ TEST_LEVEL = 0.90  # the test report's interval level (report only), matching th
 
 
 @dataclass(frozen=True, kw_only=True)
-class FinalistSelection:
-    """How many finalists go to validation, and how the pick values them.
+class FinalPick:
+    """The final pick: how many finalists go to validation, and how the pick values them.
 
     Only a candidate meeting every constraint ships (no `unmet="closest"`). `rule` is `Mean()` or
-    `LowerBound(q)` to ship cautiously; the search's ranking always uses `Mean()`.
+    `LowerBound(q)` to ship cautiously; the search's ranking always uses `Mean()`. Read back from
+    `run.json` on resume (`from_config`), never passed again.
     """
 
     finalists: int = 3
@@ -36,6 +37,15 @@ class FinalistSelection:
         """`{"finalists": n, "rule": rule.config()}`; stored in `run.json`."""
         raise NotImplementedError
 
+    @classmethod
+    def from_config(cls, config: Mapping[str, Any]) -> FinalPick:
+        """Rebuild from `config()`'s output on resume; the rule is `Mean()` or `LowerBound(q)`.
+
+        Raises:
+            ValueError: An unknown rule name.
+        """
+        raise NotImplementedError
+
 
 def choose_finalists(ranking: Sequence[str], baseline_id: str, n: int) -> list[str]:
     """The first `n` of the search ranking, baseline excluded; fewer -> all of them; none -> `[]`.
@@ -45,27 +55,26 @@ def choose_finalists(ranking: Sequence[str], baseline_id: str, n: int) -> list[s
     Args:
         ranking: Every eligible candidate in ranking order (feasible first, then by objective).
         baseline_id: Left out; it is always measured on validation anyway.
-        n: `FinalistSelection.finalists`.
+        n: `FinalPick.finalists`.
     """
     raise NotImplementedError
 
 
 def pick(
+    *,
     baseline_id: str,
     finalist_ids: Sequence[str],
     validation: Mapping[str, CandidateScores],
     fit: Fit | None,
     values: Mapping[str, Values],
     trial_counts: Mapping[str, int],
-    *,
     criteria: Criteria,
-    feasibility: float,
     rule: PickRule = _MEAN,
     problem: str | None = None,
 ) -> ValidationReport:
     """The champion: the first feasible candidate on validation, baseline included; else the baseline.
 
-    Feasible = eligible on validation and P(met) >= `feasibility` for every constraint (measured means
+    Feasible = eligible on validation and P(met) >= `criteria.feasibility` for every constraint (measured means
     without a fit). Ranked by objective resolved to a tenth of its sd; ties -> most trials, then earlier.
 
     Args:
@@ -76,9 +85,8 @@ def pick(
             None (fewer than 2 eligible, or the score model raised) -> measured means.
         values: Candidate id -> values.
         trial_counts: Candidate id -> validation trials that count.
-        criteria: The objective and constraints.
-        feasibility: P(met) a constraint needs.
-        rule: `FinalistSelection.rule`, passed to `assess`.
+        criteria: The objective, constraints, and feasibility threshold.
+        rule: `FinalPick.rule`, passed to `assess`.
         problem: Why `fit` is None, copied to `ValidationReport.problem`.
     """
     raise NotImplementedError

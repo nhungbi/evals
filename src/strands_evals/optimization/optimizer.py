@@ -10,7 +10,7 @@ from ..experiment import Experiment
 from ..types.optimization import IterationRecord
 from .declaration.space import Marker
 from .declaration.tunable import BuildContext, TunableFactory
-from .end_phase import FinalistSelection
+from .end_phase import FinalPick
 from .execution.rollout import EnvironmentFn, RolloutFn, TaskFn
 from .result import OptimizationResult
 from .score_model.protocols import ScoreModel
@@ -53,7 +53,7 @@ class Optimizer:
         search: Search | None = None,
         selection: Selection | None = None,
         score_model: ScoreModel | None = None,
-        finalists: FinalistSelection | None = None,
+        final_pick: FinalPick | None = None,
         split: Split | None = None,
         budget: Budget | None = None,
         runs_per_candidate: int = 1,
@@ -82,19 +82,20 @@ class Optimizer:
             search: Which method changes which variables; None means `Search()`.
             selection: How the parent is chosen; None means `TopRanked()`.
             score_model: The statistical model of scores (not an LLM); None means `BayesBenchModel()`.
-            finalists: How many finalists go to validation and how the pick values them; None means
-                `FinalistSelection(finalists=3)`.
+            final_pick: How many finalists go to validation and how the pick values them; None means
+                `FinalPick(finalists=3)`.
             split: Train / validation / test; None means `Split(train=0.4, validation=0.3, test=0.3)`.
             budget: Rollout and iteration caps; None means `Budget()`.
             runs_per_candidate: Times every candidate is scored on each case.
             crash_score: What an `agent_failure` run's evaluator metrics count as: "worst" (each metric's
                 worst end), a number, or None (missing data).
-            feasibility: P(met) a constraint needs to count as met.
+            feasibility: The P(met) threshold a constraint needs to count as met (not a fraction of cases);
+                held by `Criteria`.
             environment: Per-attempt resources passed to the factory by name.
             proposals_per_iteration: Patches each proposing block returns per iteration.
             max_workers: Parallel trials, shared by the candidates scored at once.
             rerun_passes: Max infrastructure re-run passes per candidate and phase.
-            seed: Seeds selection, TPE, and Thompson; the split uses `Split.seed`.
+            seed: Seeds the split (unless `Split(seed=)` is set), selection, TPE, and Thompson.
             base_dir: Where run directories go.
             name: The run folder's prefix (lowercase letters, digits, `-`, `_`); for reading only.
             on_iteration: Called with each finished iteration.
@@ -155,11 +156,12 @@ class Optimizer:
 
         Pass again what `run.json` can't store: the experiment, the agent (`factory=`, or `build_task=`
         with `space=`), `rollout_fn`, `environment`, the objective, constraints, search, selection, and
-        score model. The cases, the space, the objective, constraints, search, selection, and score model
-        are compared with `run.json` (`ValueError` naming the field); the agent code, `rollout_fn`,
-        `environment`, and the evaluators can't be compared and are the caller's to keep. The split, finalists,
-        `runs_per_candidate`, `crash_score`, `feasibility`, seed, `proposals_per_iteration`, and
-        `rerun_passes` are read from `run.json`. Only `budget`, `max_workers`, and `on_iteration` may differ
+        score model. Of those, the cases, the space, the objective, constraints, search, selection, and score
+        model are compared with `run.json` (`ValueError` naming the field); the agent code, `rollout_fn`,
+        `environment`, and the evaluators can't be compared and are the caller's to keep. Everything else
+        is read from `run.json`, never passed again: the split (with the seed it used), the final pick
+        (`FinalPick.from_config`), `runs_per_candidate`, `crash_score`, `feasibility`, seed,
+        `proposals_per_iteration`, and `rerun_passes`. Only `budget`, `max_workers`, and `on_iteration` may differ
         (`None` keeps the saved value).
 
         Resume continues a run that was killed; it never extends a finished one. Every stop runs the end

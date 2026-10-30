@@ -1,7 +1,7 @@
 """Data records for the optimizer. Imports nothing from `strands_evals.optimization` at runtime."""
 
 from .estimates import Estimate
-from .results import IterationRecord, ProposalOutcome
+from .results import IterationRecord, ProposalOutcome, StopReason
 from .scores import (
     CandidateLabel,
     CandidateScores,
@@ -34,6 +34,7 @@ __all__ = [
     "Range",
     "SplitName",
     "SplitScores",
+    "StopReason",
     "TestReport",
     "TrialRecord",
     "TrialStatus",

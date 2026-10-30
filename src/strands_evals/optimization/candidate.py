@@ -29,7 +29,7 @@ class Candidate:
         defaulted: Keys no measured candidate had yet, left at their defaults.
     """
 
-    values: Mapping[str, Value]
+    values: Values
     parent_id: str | None
     origin: str
     rationale: str

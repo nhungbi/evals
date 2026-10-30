@@ -35,9 +35,9 @@ class ProposalRequest:
         n: How many patches to return.
         iteration: So a method can seed per iteration.
         seed: The run seed.
-        attempt: The redraw number within this iteration and block (0 = first ask).
-        criteria: Combines per-metric estimates or sampled values into the objective and checks constraints.
-        feasibility: P(met) a constraint needs, as the ranking uses it.
+        redraw: The redraw number within this iteration and block (0 = first ask; `Search.redraws` caps it).
+        criteria: Combines per-metric estimates or sampled values into the objective and checks constraints
+            (`criteria.feasibility` is the P(met) threshold the ranking uses).
         log: `log(event, **fields)` writes an event; a method may write only `screened` and
             `proposer_retry` (any other name raises `ValueError`).
     """
@@ -53,9 +53,8 @@ class ProposalRequest:
     n: int
     iteration: int
     seed: int
-    attempt: int
+    redraw: int
     criteria: Criteria
-    feasibility: float
     log: Callable[..., None]
 
 

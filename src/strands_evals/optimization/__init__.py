@@ -16,6 +16,7 @@ from ..types.optimization import (
     ProposalOutcome,
     Range,
     SplitName,
+    StopReason,
     TestReport,
     TrialRecord,
     TrialStatus,
@@ -30,9 +31,9 @@ from .declaration.markers import Choice, Component, Float, Int, OneOf, TextValue
 from .declaration.space import FileSource, Marker, ParamInfo, ParamKind, Space
 from .declaration.tools import ToolDescriptions, tool_descriptions
 from .declaration.tunable import BuildContext, TunableFactory, tunable
-from .end_phase import FinalistSelection
+from .end_phase import FinalPick
 from .execution.rollout import EnvironmentFn, RolloutFn, TaskFn
-from .execution.status import TrialInvalid
+from .execution.status import InfrastructureError
 from .optimizer import Optimizer
 from .result import CandidateView, Grain, OptimizationResult
 from .score_model.bayesbench import BayesBenchModel
@@ -87,11 +88,12 @@ __all__ = [
     "Evidence",
     "FileSource",
     "FileText",
-    "FinalistSelection",
+    "FinalPick",
     "Fit",
     "FitData",
     "Float",
     "Grain",
+    "InfrastructureError",
     "Int",
     "IterationRecord",
     "Joint",
@@ -137,6 +139,7 @@ __all__ = [
     "Split",
     "SplitName",
     "Step",
+    "StopReason",
     "TPE",
     "TaskFn",
     "TestReport",
@@ -144,7 +147,6 @@ __all__ = [
     "Thompson",
     "ToolDescriptions",
     "TopRanked",
-    "TrialInvalid",
     "TrialRecord",
     "TrialStatus",
     "TunableFactory",

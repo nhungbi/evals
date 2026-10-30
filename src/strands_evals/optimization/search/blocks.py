@@ -70,6 +70,8 @@ class ScheduleContext:
     Attributes:
         past: Completed iterations, oldest first.
         blocks: The resolved blocks, the default ones included.
+        keys: Block name -> its expanded keys (from `Search.resolve`), so `Nested` can narrow to blocks
+            with an active key under the opener's values (`Block.variables` holds names as declared).
         space: Narrows blocks to those active under an opener's values.
         values: Candidate id -> values, every saved candidate.
         eligible: Ids eligible now (a re-scored candidate can become eligible later).
@@ -80,6 +82,7 @@ class ScheduleContext:
 
     past: Sequence[IterationRecord]
     blocks: Sequence[Block]
+    keys: Mapping[str, Sequence[str]]
     space: Space
     values: Mapping[str, Values]
     eligible: frozenset[str]
@@ -128,8 +131,8 @@ class Nested(Schedule):
     """Rounds over a structural block, with an inner schedule inside each round.
 
     Each round opens with one candidate that changes only `outer`, from the incumbent (`ctx.ranking[0]`);
-    then `inner_iterations` inner steps (the inner schedule's blocks, narrowed to those with an active key
-    under the opener's values) whose parents are the round's own eligible candidates (the incumbent if none
+    then `inner_iterations` inner steps (the inner schedule's blocks, narrowed to those with an active key in
+    `ctx.keys` under the opener's values) whose parents are the round's own eligible candidates (the incumbent if none
     is). An opener repeating a measured candidate opens the round on it at no cost. At the round's end the
     outer method observes the round's best candidate (`Observation.source_id`); an opener that isn't
     eligible is observed as None with outcome `ineligible`, and the round's inner steps are skipped. Rounds stop after

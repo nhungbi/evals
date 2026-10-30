@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
-Phase = Literal["search", "validation", "test"]
+from ...types.optimization import SplitName
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -35,15 +34,15 @@ class BudgetTracker:
         """
         raise NotImplementedError
 
-    def can_afford(self, rollouts: int, *, phase: Phase = "search") -> bool:
+    def can_afford(self, rollouts: int, *, phase: SplitName = "train") -> bool:
         """Whether `rollouts` fit, keeping the later phases' reserves.
 
-        `search`: spent + rollouts + both reserves <= max; `validation`: + the test reserve; `test`: spent +
-        rollouts <= max. Callers pass `TrialRunner.pending(...)`, never `cases x runs`.
+        `train` (the search): spent + rollouts + both reserves <= max; `validation`: + the test reserve;
+        `test`: spent + rollouts <= max. Callers pass `TrialRunner.pending(...)`, never `cases x runs`.
         """
         raise NotImplementedError
 
-    def allowance(self, *, phase: Phase = "search") -> int:
+    def allowance(self, *, phase: SplitName = "train") -> int:
         """What `TrialRunner.run` may spend on re-run passes: remaining minus the later phases' reserves, >= 0."""
         raise NotImplementedError
 

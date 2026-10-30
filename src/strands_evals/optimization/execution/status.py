@@ -5,7 +5,7 @@ from __future__ import annotations
 from ...types.optimization import TrialStatus
 
 
-class TrialInvalid(Exception):
+class InfrastructureError(Exception):
     """Raise from a rollout or environment to mark the trial `infrastructure_invalid`.
 
     The trial is re-run, never scored, e.g. when a sandbox failed to start.
@@ -16,7 +16,7 @@ def classify(error: BaseException) -> TrialStatus:
     """`INFRASTRUCTURE_INVALID` or `AGENT_FAILURE`, by these rules, in order.
 
     1. Unwrap: follow `EventLoopException.original_exception` to the cause.
-    2. `TrialInvalid` -> `INFRASTRUCTURE_INVALID`.
+    2. `InfrastructureError` -> `INFRASTRUCTURE_INVALID`.
     3. `utils.is_throttling_error(cause)`, unless the cause is still an `EventLoopException` ->
        `INFRASTRUCTURE_INVALID`.
     4. A transport error -> `INFRASTRUCTURE_INVALID`: botocore `ConnectTimeoutError`,
@@ -31,7 +31,7 @@ def classify(error: BaseException) -> TrialStatus:
        slow agent never sheds its hard cases by being re-run.
 
     Only these two come from an exception: `make_task` raises an environment setup error as
-    `TrialInvalid` (rule 2) whatever its type, and `TrialRunner` sets `VERIFIER_INVALID` when every
+    `InfrastructureError` (rule 2) whatever its type, and `TrialRunner` sets `VERIFIER_INVALID` when every
     evaluator is in `evaluator_errors`. Under `crash_score="worst"` an infrastructure failure misread as
     `AGENT_FAILURE` would score the worst end instead of being re-run.
     """
