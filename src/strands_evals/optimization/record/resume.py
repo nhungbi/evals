@@ -56,7 +56,7 @@ class ResumeState:
         candidates: Every saved candidate; their scores and the fit are rebuilt from their saved trials.
         exhausted: Blocks that produced zero candidates on their latest turn.
         feedback: Per block name, its `observe` and `evidence` events interleaved in event order; replayed
-            through each block's method before the first new iteration.
+            through each block's proposer before the first new iteration.
         history: Parents chosen so far (`SelectionContext.history`).
         open_rounds: `Nested` rounds started but not finished, outermost first.
         fits: Each `fit` event, in order: fitted ones are refitted, unfitted ones without an error kept the
@@ -97,7 +97,7 @@ def load_state(run: RunDirectory, *, config: Mapping[str, Any]) -> ResumeState:
     """Compare `config` with `run.json` field by field, then rebuild the state from the event log.
 
     Compared (what `Optimizer.resume` is given again): cases, space (every stored `ParamInfo` field),
-    objective and constraints, search (blocks, methods and their `config()`, keys, schedule name and
+    objective and constraints, search (blocks, proposers and their `config()`, keys, schedule name and
     `config()`, redraws), selection (name and `config()`), score model (name and `config()`).
     Read (never passed again, rebuilt from `run.json`): split (settings, seed used, and case lists),
     `runs_per_candidate`, `crash_score`, `feasibility`, seed, `proposals_per_iteration`, `rerun_passes`,

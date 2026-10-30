@@ -6,10 +6,10 @@ from typing import Any, ClassVar
 
 from ...types.optimization import Evidence, Observation, Patch
 from ..declaration.space import ParamKind
-from .method import Method, ProposalRequest
+from .proposer import ProposalRequest, Proposer
 
 
-class TPE(Method):
+class TPE(Proposer):
     """Optuna TPE with one study per context (the values outside its block); studies maximize.
 
     `TPESampler(multivariate=True, group=True, constant_liar=True, constraints_func=...)`: a

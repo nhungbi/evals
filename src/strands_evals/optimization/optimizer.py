@@ -24,7 +24,7 @@ from .setup.splits import Split
 class Optimizer:
     """Searches for changes to a declared agent on train, then picks what ships once, on validation.
 
-    Each iteration the schedule plans a step, selection picks a parent, methods propose, every candidate is
+    Each iteration the schedule plans a step, selection picks a parent, proposers propose, every candidate is
     scored on train, and the score model is refitted. There is no champion during the run: after the search
     stops, the top finalists and the baseline are measured on validation, a fresh fit picks the champion
     (only a candidate meeting every constraint ships, else the baseline), and the champion is compared with
@@ -79,7 +79,7 @@ class Optimizer:
             space: Declared name -> marker, for `build_task`.
             objective: What to maximize or minimize.
             constraints: Bounds every shipped candidate must meet; during the search they only rank.
-            search: Which method changes which variables; None means `Search()`.
+            search: Which proposer changes which variables; None means `Search()`.
             selection: How the parent is chosen; None means `TopRanked()`.
             score_model: The statistical model of scores (not an LLM); None means `BayesBenchModel()`.
             final_pick: How many finalists go to validation and how the pick values them; None means

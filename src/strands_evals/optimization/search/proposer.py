@@ -1,4 +1,4 @@
-"""The `Method` base class and its request: proposes values, never decides what ships."""
+"""The `Proposer` base class and its request: proposes values, never decides what ships."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from ..scoring.objectives import Criteria
 
 @dataclass(frozen=True)
 class ProposalRequest:
-    """Everything a method may see when proposing: train data only, never validation or test.
+    """Everything a proposer may see when proposing: train data only, never validation or test.
 
     A dataclass, not a record: it holds the space, the parent, the fit, and a callback, and is never saved.
 
@@ -33,12 +33,12 @@ class ProposalRequest:
         candidates: Every scored candidate so far: eligible ones in ranking order, then the ineligible in
             scoring order. Invalid, duplicate, and unscored proposals never appear.
         n: How many patches to return.
-        iteration: So a method can seed per iteration.
+        iteration: So a proposer can seed per iteration.
         seed: The run seed.
         redraw: The redraw number within this iteration and block (0 = first ask; `Search.redraws` caps it).
         criteria: Combines per-metric estimates or sampled values into the objective and checks constraints
             (`criteria.feasibility` is the P(met) threshold the ranking uses).
-        log: `log(event, **fields)` writes an event; a method may write only `screened` and
+        log: `log(event, **fields)` writes an event; a proposer may write only `screened` and
             `proposer_retry` (any other name raises `ValueError`).
     """
 
@@ -58,7 +58,7 @@ class ProposalRequest:
     log: Callable[..., None]
 
 
-class Method(ABC):
+class Proposer(ABC):
     """Proposes patches on a parent and learns from how each one did; never decides what ships.
 
     An ABC because users subclass it.
@@ -77,12 +77,12 @@ class Method(ABC):
     async def propose(self, request: ProposalRequest) -> list[Patch]:
         """Return up to `request.n` patches; `[]` means nothing useful this time (a redraw cause).
 
-        Raising means the method itself failed and ends the run with `stop_reason="proposer_error"`.
+        Raising means the proposer itself failed and ends the run with `stop_reason="proposer_error"`.
         """
 
     @abstractmethod
     def observe(self, observation: Observation) -> None:
-        """Called exactly once per patch this method returned."""
+        """Called exactly once per patch this proposer returned."""
 
     def evidence(self, evidence: Evidence) -> None:  # noqa: B027 (optional hook, empty on purpose)
         """Called once per scored candidate another block proposed; does nothing by default.

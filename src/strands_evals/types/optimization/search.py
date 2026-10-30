@@ -1,4 +1,4 @@
-"""What search methods return and are told."""
+"""What proposers return and are told."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ ObservationOutcome = Literal["feasible", "infeasible", "ineligible", "invalid", 
 class Patch(BaseModel):
     """One proposed change to the parent: only the keys to change, not a full candidate.
 
-    `state` is the method's private memory, handed back in `observe` and on resume; it must be
+    `state` is the proposer's private memory, handed back in `observe` and on resume; it must be
     JSON-serializable (checked with `json.dumps` when the patch arrives). `usage` is the proposer's own
     model cost, reported in `search_cost` and never counted against the rollout budget. No proposer
     name: the optimizer knows which block asked, and records it as the candidate's `origin`.
@@ -35,7 +35,7 @@ class Patch(BaseModel):
 
 
 class CandidateSummary(BaseModel):
-    """One scored candidate as a method may see it; train data only.
+    """One scored candidate as a proposer may see it; train data only.
 
     Attributes:
         number: Display number, so a prompt can say "version 3".
@@ -72,7 +72,7 @@ class CandidateSummary(BaseModel):
 
 
 class Observation(BaseModel):
-    """Feedback after one of the method's own patches was handled; told exactly once per patch.
+    """Feedback after one of the proposer's own patches was handled; told exactly once per patch.
 
     Outcomes are labels, not filters: `feasible` = eligible and meeting every constraint as the ranking
     assesses it; `infeasible` = a constraint not met (still a possible parent, ranked lower);
@@ -108,7 +108,7 @@ class Observation(BaseModel):
 
 
 class Evidence(BaseModel):
-    """A candidate another block proposed, told to every other block's method.
+    """A candidate another block proposed, told to every other block's proposer.
 
     `objective`, `objectives`, and `violations` are snapshots, as in `Observation`.
     """

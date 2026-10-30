@@ -1,4 +1,4 @@
-"""Blocks (a method owning some variables), schedules (what each iteration does), and the search that holds them.
+"""Blocks (a proposer owning some variables), schedules (what each iteration does), and the search that holds them.
 
 One module, so `Schedule.next`'s hints resolve without an import cycle.
 """
@@ -12,30 +12,30 @@ from typing import Any, ClassVar, Literal
 
 from ...types.optimization import IterationRecord, Values
 from ..declaration.space import Space
-from .method import Method
+from .proposer import Proposer
 
 
 class Block:
-    """One method owns some variables; a top-level name expands to every key under it.
+    """One proposer owns some variables; a top-level name expands to every key under it.
 
     Attributes:
-        method: The method proposing values for these variables.
+        proposer: Proposes values for these variables.
         variables: The declared names or keys as given.
-        name: Defaults to `type(method).__name__`. It keys `observe` events and the resume state,
+        name: Defaults to `type(proposer).__name__`. It keys `observe` events and the resume state,
             so it must be stable across resume.
     """
 
-    method: Method
+    proposer: Proposer
     variables: tuple[str, ...]
     name: str
 
-    def __init__(self, method: Method, *variables: str, name: str | None = None):
-        """Give `method` ownership of `variables`.
+    def __init__(self, proposer: Proposer, *variables: str, name: str | None = None):
+        """Give `proposer` ownership of `variables`.
 
         Args:
-            method: Proposes values for these variables.
+            proposer: Proposes values for these variables.
             *variables: Declared names or flat keys.
-            name: Stable block name; defaults to the method's class name.
+            name: Stable block name; defaults to the proposer's class name.
         """
         raise NotImplementedError
 
@@ -134,7 +134,7 @@ class Nested(Schedule):
     then `inner_iterations` inner steps (the inner schedule's blocks, narrowed to those with an active key in
     `ctx.keys` under the opener's values) whose parents are the round's own eligible candidates (the incumbent if none
     is). An opener repeating a measured candidate opens the round on it at no cost. At the round's end the
-    outer method observes the round's best candidate (`Observation.source_id`); an opener that isn't
+    outer proposer observes the round's best candidate (`Observation.source_id`); an opener that isn't
     eligible is observed as None with outcome `ineligible`, and the round's inner steps are skipped. Rounds stop after
     `ctx.redraws + 1` in a row measure nothing new; then `next()` returns None. Nested inner schedules add
     one entry to `Step.round` per level.
@@ -161,7 +161,7 @@ class Nested(Schedule):
 
 
 class Search:
-    """Which method changes which variables, and the schedule the blocks propose in.
+    """Which proposer changes which variables, and the schedule the blocks propose in.
 
     Not to be confused with `Selection`, which picks the parent each iteration.
 
@@ -204,8 +204,8 @@ class Search:
         there is no structural block.
 
         Raises:
-            ValueError: A variable in two blocks; a variable whose kind the block's method can't propose
-                (not in `method.kinds`, e.g. text given to `TPE`), naming the key and the block; or a
+            ValueError: A variable in two blocks; a variable whose kind the block's proposer can't propose
+                (not in `proposer.kinds`, e.g. text given to `TPE`), naming the key and the block; or a
                 default block whose name a user block already has ("text", "structure", "numbers"),
                 suggesting `Block(..., name=)`.
         """

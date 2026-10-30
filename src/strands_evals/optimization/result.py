@@ -72,7 +72,7 @@ class OptimizationResult:
         effects: `effects.json`: per metric and option from the search fit, or empty with the reason.
         stop_reason: Why the search stopped: `budget` (what's left after the end-phase reserves can't score
             one more candidate), `iterations` (the cap), `exhausted` (every block produced no candidates on
-            its latest turn, or the schedule had nothing left), or `proposer_error` (a method raised). The
+            its latest turn, or the schedule had nothing left), or `proposer_error` (a proposer raised). The
             end phase runs after any of them. Never `setup`: a setup stop raises instead of returning.
         agent_cost: The agent's own usage per split (each trial's last attempt): train = the search,
             validation and test = the end phase.

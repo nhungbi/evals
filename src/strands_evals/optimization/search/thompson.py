@@ -6,10 +6,10 @@ from typing import Any, ClassVar
 
 from ...types.optimization import Observation, Patch
 from ..declaration.space import ParamKind
-from .method import Method, ProposalRequest
+from .proposer import ProposalRequest, Proposer
 
 
-class Thompson(Method):
+class Thompson(Proposer):
     """Proposes the unmeasured combination of its block's choices that a posterior draw likes best.
 
     One sampled set of effects per goal metric (`sample_effects(1, rng)` and

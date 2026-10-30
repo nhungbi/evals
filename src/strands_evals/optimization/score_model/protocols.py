@@ -1,6 +1,6 @@
 """The score model's interfaces; a custom score model subclasses `ScoreModel` and returns a `Fit`.
 
-`ScoreModel` is an ABC because users subclass it (as `Method`, `Selection`, `Schedule`); `Fit` and
+`ScoreModel` is an ABC because users subclass it (as `Proposer`, `Selection`, `Schedule`); `Fit` and
 `MetricModel` are Protocols, met by whatever objects a model returns.
 
 One model per goal metric (each objective term's metric and each constraint metric), never a

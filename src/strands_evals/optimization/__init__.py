@@ -56,7 +56,7 @@ from .scoring.objectives import (
 )
 from .scoring.rewards import RewardFunction, RewardFunctionEvaluator, RewardResult
 from .search.blocks import Alternate, Block, Joint, Nested, Schedule, ScheduleContext, Search, Step
-from .search.method import Method, ProposalRequest
+from .search.proposer import ProposalRequest, Proposer
 from .search.reflection import Reflection
 from .search.thompson import Thompson
 from .search.tpe import TPE
@@ -104,7 +104,6 @@ __all__ = [
     "Maximize",
     "Mean",
     "Measured",
-    "Method",
     "MetricModel",
     "MetricRegistry",
     "MetricTarget",
@@ -124,6 +123,7 @@ __all__ = [
     "PickRule",
     "ProposalOutcome",
     "ProposalRequest",
+    "Proposer",
     "Range",
     "Reflection",
     "RewardFunction",

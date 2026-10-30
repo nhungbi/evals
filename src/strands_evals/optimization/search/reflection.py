@@ -8,10 +8,10 @@ from strands.models.model import Model
 
 from ...types.optimization import Observation, Patch
 from ..declaration.space import ParamKind
-from .method import Method, ProposalRequest
+from .proposer import ProposalRequest, Proposer
 
 
-class Reflection(Method):
+class Reflection(Proposer):
     """An agentic, contrastive proposer: complete new text values for its block.
 
     An agent reads the parent's train conversations (built from `request.trials`: a traces folder with

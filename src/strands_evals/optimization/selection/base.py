@@ -49,8 +49,8 @@ class SelectionContext:
 class Selection(ABC):
     """Picks the parent each iteration; it never decides what ships.
 
-    Not to be confused with `Search`, which decides which method changes which variables.
-    An ABC because users subclass it (like `Method`); internal seams such as `TrialCache` are
+    Not to be confused with `Search`, which decides which proposer changes which variables.
+    An ABC because users subclass it (like `Proposer`); internal seams such as `TrialCache` are
     `Protocol`s.
 
     Attributes:
