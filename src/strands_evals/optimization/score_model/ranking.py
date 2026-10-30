@@ -17,7 +17,7 @@ from ..scoring.objectives import Constraint, Criteria
 from .protocols import Fit
 
 
-def resolved(value: float, sd: float) -> float:
+def round_to_sd(value: float, sd: float) -> float:
     """`value` rounded to a tenth of `sd`'s leading digit.
 
     Candidates the model can't tell apart then tie, so the tie rules can fire on float estimates; `sd` 0
@@ -99,7 +99,7 @@ def assess(
 ) -> dict[str, Assessment]:
     """Assess each candidate from the fit, or from measured means without a usable one.
 
-    `rule` turns each objective term's `Estimate` into one number before `resolved()` and
+    `rule` turns each objective term's `Estimate` into one number before `round_to_sd()` and
     `Criteria.objective_value`; constraints are unaffected (P(met) >= `criteria.feasibility`), and measured
     means ignore it. The search always uses `Mean()`; only the final pick passes `FinalPick.rule`.
 

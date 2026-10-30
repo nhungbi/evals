@@ -24,7 +24,12 @@ class TrialLogEntry:
     """What the task wrapper recorded for one trial.
 
     Attributes:
+        status: The last attempt's status from `classify`, or `completed` when the rollout returned
+            (`verifier_invalid` is set later, by `TrialRunner`).
+        error_type: The last attempt's exception type name; None when it returned.
+        error: The last attempt's exception message; None when it returned.
         attempts: Every attempt, the last one included.
+        trace_id: The trial's trace (its `execute_case` span), which groups its agent and judge spans.
         attempt_span_id: The last attempt's span.
         earlier: `(span id, status, error_type, error)` for each attempt `Experiment` retried
             (throttling), oldest first.
