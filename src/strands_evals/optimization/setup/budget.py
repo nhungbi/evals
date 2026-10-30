@@ -20,7 +20,10 @@ class BudgetTracker:
 
     Two reserves are held back for the end phase: `validation_reserve` = (finalists + 1) x |validation| x
     runs and `test_reserve` = 2 x |test| x runs. The search can spend neither, and validation can't spend
-    the test share.
+    the test share. Under a `Pareto` objective `max(finalists, 5)` replaces `finalists`, and
+    `test_reserve` = (max(finalists, 5) + 1) x |test| x runs (every front member is tested); a test report
+    that can't afford every member tests the champion and the baseline first, then the others in ranking
+    order while affordable.
     """
 
     def __init__(self, budget: Budget, spent: int = 0, *, validation_reserve: int = 0, test_reserve: int = 0):

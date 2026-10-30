@@ -92,6 +92,9 @@ class MetricModel(Protocol):
         """The metric's value for `values` under each sampled set of effects."""
         ...
 
+    unit: float
+    """The metric's scale in the model, so `Thompson` can weigh different metrics' draws."""
+
 
 class Fit(Protocol):
     """A fitted score model: one `MetricModel` per goal metric.

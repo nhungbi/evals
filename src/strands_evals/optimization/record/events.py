@@ -62,7 +62,8 @@ class EventLog:
     - `evidence`: `block` (the method told), `evidence` (`Evidence`).
     - `iteration_end`: `record` (`IterationRecord`), `exhausted`, `best_after` (a snapshot).
     - `finalists`: `candidate_ids` (ranked). `selected`: `report` (`ValidationReport`). `test`: `report`
-      (`TestReport` or None), `reason`.
+      (`TestReport` or None), `reason` (also naming the front members it couldn't afford), `front` (under a
+      `Pareto` objective, each tested front member's `TestReport`, the champion's included; `{}` otherwise).
 
     Resume reads: `spent` from the trial events (the last per key: its `rollouts` plus its earlier
     attempts'); candidates, numbers, parents, and

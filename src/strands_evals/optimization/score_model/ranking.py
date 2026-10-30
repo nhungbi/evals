@@ -33,6 +33,8 @@ class Assessment:
     Attributes:
         objective: `Criteria.objective_value` over each goal metric's resolved estimate, or the measured
             objective (`CandidateScores.objective`) when assessed by measured means.
+        terms: `Criteria.terms` over the same values (oriented, the rule applied, resolved): what
+            `pareto_front` compares and the `Pareto` tie-break reads; None when `objective` is None.
         feasible: Every constraint has P(met) >= `criteria.feasibility` under the fit, or is met on measured means.
         violations: Per constraint, <= 0 when met: the metric's quantile at `criteria.feasibility` against the limit,
             or the measured mean against the limit.
@@ -45,6 +47,7 @@ class Assessment:
 
     candidate_id: str
     objective: float | None
+    terms: tuple[float, ...] | None
     feasible: bool
     violations: tuple[float, ...]
     violation: float
@@ -117,15 +120,30 @@ def rank(
     *,
     trial_counts: Mapping[str, int] | None = None,
 ) -> list[str]:
-    """Feasible first by objective (highest first), then the infeasible by least violation.
+    """Feasible first by objective (highest first), then the infeasible by least violation, then by objective.
 
     Ties (equal after resolving): with `trial_counts` (the final pick), most trials, then earlier in
-    `order`; without (the search), earlier in `order`, so the baseline wins when nothing beats it.
+    `order`, so the baseline wins when nothing beats it, under `Pareto` too; without (the search), under
+    `Pareto` first the larger `terms` (compared in objective order), then earlier in `order`.
 
     Args:
         assessments: Candidate id -> its assessment.
         order: The candidates in scoring order.
         trial_counts: Candidate id -> counted trials; given only at the final pick.
+    """
+    raise NotImplementedError
+
+
+def pareto_front(assessments: Mapping[str, Assessment], ids: Sequence[str]) -> list[str]:
+    """The feasible candidates among `ids` that no other feasible one dominates, in `ids`' order.
+
+    A dominates B when every one of A's `terms` is >= B's and they aren't all equal. Infeasible candidates are
+    left out: constraints filter, they are never front dimensions. Used by the end phase only (the
+    finalists from the search ranking, the validated front from the validation one).
+
+    Args:
+        assessments: Candidate id -> its assessment.
+        ids: The candidates to consider, in ranking order.
     """
     raise NotImplementedError
 

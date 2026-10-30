@@ -69,6 +69,7 @@ class ResumeState:
             result too: skipped).
         test: The `test` event's report; None when skipped or not reached.
         test_reason: Why it was skipped (the `test` event's reason); None otherwise.
+        front_test: The `test` event's front reports (`{}` unless the objective is a `Pareto`).
         stop_reason: The last `stop` event's reason.
     """
 
@@ -88,6 +89,7 @@ class ResumeState:
     test_done: bool
     test: TestReport | None
     test_reason: str | None
+    front_test: dict[str, TestReport]
     stop_reason: StopReason | None
 
 

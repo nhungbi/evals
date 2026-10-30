@@ -15,7 +15,7 @@ MetricTarget = str | Evaluator | type[Evaluator]
 
 @dataclass(frozen=True, init=False)
 class _Direction:
-    """One metric to maximize or minimize; `weight` and `scale` are read only inside `WeightedSum`."""
+    """One metric to maximize or minimize; `weight` and `scale` are read only inside `WeightedSum` or `Pareto`."""
 
     metric: str
     weight: float
@@ -28,10 +28,10 @@ class _Direction:
 
         Args:
             target: A metric name, an evaluator class, or an evaluator instance.
-            weight: Relative importance inside `WeightedSum`.
+            weight: Relative importance inside `WeightedSum` or `Pareto`.
             scale: The size of a meaningful change, so metrics in different units combine; None means the
                 metric's range width (1.0 for a 0-1 evaluator). An unbounded metric (every usage metric)
-                inside `WeightedSum` needs it.
+                inside `WeightedSum` or `Pareto` needs it.
 
         Raises:
             ValueError: `weight` or `scale` is not > 0.
@@ -82,7 +82,45 @@ class WeightedSum:
         raise NotImplementedError
 
 
-Objective = Maximize | Minimize | WeightedSum
+@dataclass(frozen=True, init=False)
+class Pareto:
+    """Several objectives optimized jointly; one champion ships, and the front is reported.
+
+    `Pareto(Maximize("Helpfulness"), Minimize("tokens", scale=1000))`. The ranking (parents, inheritance,
+    `Nested`'s round best, the pick) uses the weighted gain, computed as `WeightedSum`'s value with these
+    weights: the highest-gain candidate of a pool is never dominated, so this matches taking the front's
+    highest-gain member again and again. `TPE` is told each objective's value (a multi-objective study);
+    `Thompson` weighs the objectives with fresh random weights per draw. In the end phase the finalists are
+    the feasible train front, the champion is the validated front's highest-gain member (the baseline when
+    nothing feasible beats it), and every validated front member is tested against the baseline.
+    Constraints only filter candidates; they are never front dimensions. A `Pareto` of one objective is
+    that objective.
+    """
+
+    objectives: tuple[Maximize | Minimize, ...]
+    weights: tuple[float, ...] | None
+
+    def __init__(self, *objectives: Maximize | Minimize, weights: Sequence[float] | None = None):
+        """Combine objectives jointly.
+
+        Args:
+            *objectives: At least one `Maximize` or `Minimize`.
+            weights: One per objective, each > 0, for the gain; None means each objective's own `weight`.
+
+        Raises:
+            TypeError: No objectives, or one that isn't a `Maximize` / `Minimize`.
+            ValueError: `WeightedSum`'s checks; `weights` of another length than `objectives`, or a weight
+                <= 0; `weights` next to an objective with a non-default `weight=` (one would be ignored).
+        """
+        raise NotImplementedError
+
+    def __str__(self) -> str:
+        """E.g. `"Pareto(Maximize(Helpfulness), Minimize(tokens, scale=1000))"`, plus `", weights=[2.0, 1.0]"`
+        when given; stored in `run.json` and compared on resume."""
+        raise NotImplementedError
+
+
+Objective = Maximize | Minimize | WeightedSum | Pareto
 
 
 @dataclass(frozen=True, init=False)
@@ -129,6 +167,7 @@ class Criteria:
             read by the ranking, the candidate label, and the final pick.
         goal_metrics: The metrics the score model fits, one model each: the objective's metrics, then the
             constraints' metrics, each once, in that order.
+        is_pareto: The objective is a `Pareto` of two or more objectives, so the end phase works from the front.
     """
 
     objective: Objective
@@ -137,6 +176,7 @@ class Criteria:
     crash_score: Literal["worst"] | float | None
     feasibility: float
     goal_metrics: tuple[str, ...]
+    is_pareto: bool
 
     def __init__(
         self,
@@ -162,10 +202,12 @@ class Criteria:
             feasibility: The P(met) threshold a constraint needs (`Optimizer(feasibility=)`), 0 < x < 1.
 
         Raises:
-            ValueError: A metric name is unknown or ambiguous; inside a `WeightedSum`, the same metric
-                twice after resolution, or a metric with an unbounded range and no `scale=`; a lone
+            ValueError: A metric name is unknown or ambiguous; inside a `WeightedSum` or `Pareto`, the same
+                metric twice after resolution, or a metric with an unbounded range and no `scale=`; a lone
                 `Maximize` / `Minimize` with a non-default `weight` or `scale` (read only inside a
-                `WeightedSum`, so it would be silently ignored); `feasibility` outside (0, 1).
+                `WeightedSum` or `Pareto`, so it would be silently ignored); `feasibility` outside (0, 1).
+
+        A `Pareto` of one objective is unwrapped to that objective.
         """
         raise NotImplementedError
 
@@ -182,10 +224,18 @@ class Criteria:
     def objective_value(self, metrics: Mapping[str, float]) -> float | None:
         """The objective from per-metric values, always higher-is-better (`Minimize` negates).
 
-        A lone `Maximize` / `Minimize` gives the metric's value; `WeightedSum` its weighted mean, with no
-        baseline subtraction. Applied to measured values (per case or per run, measured means, the test
-        report) and, by the ranking, to each goal metric's estimate from a fit, never to a fitted scalar.
+        A lone `Maximize` / `Minimize` gives the metric's value; `WeightedSum` and `Pareto` the weighted mean
+        (a `Pareto`'s `weights=` when given), with no baseline subtraction. Applied to measured values (per
+        case or per run, measured means, the test report) and, by the ranking, to each goal metric's estimate
+        from a fit, never to a fitted scalar.
         None when the values leave it unmeasured.
+        """
+        raise NotImplementedError
+
+    def terms(self, metrics: Mapping[str, float]) -> tuple[float, ...] | None:
+        """Each objective term's value, oriented higher-is-better, in objective order; None when one is unmeasured.
+
+        What Pareto dominance compares; one value for a lone objective.
         """
         raise NotImplementedError
 

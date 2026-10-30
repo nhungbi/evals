@@ -138,6 +138,8 @@ class ValidationReport(BaseModel):
 
     Attributes:
         champion_id: What ships; the baseline's id when nothing feasible beats it.
+        front: Under a `Pareto` objective, the validated front (the baseline included when on it), in ranking
+            order, so the champion is first unless the front is empty; `[]` otherwise.
         objectives: Candidate id -> its validation objective under the validation fit, or by measured
             validation means when `problem` is set; None when it isn't eligible on validation.
         estimates: Candidate id -> goal metric -> the validation fit's estimate; empty when assessed by
@@ -153,6 +155,7 @@ class ValidationReport(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     champion_id: str
+    front: list[str]
     objectives: dict[str, float | None]
     estimates: dict[str, dict[str, Estimate]]
     infeasible: dict[str, str]
@@ -165,7 +168,8 @@ class TestReport(BaseModel):
     """The champion against the baseline on test, saved in the `test` event; report only.
 
     When the baseline ships, `champion_id == baseline_id`: the baseline is measured once and compared with
-    itself (differences 0, ratios 1), and `missing` and `means` hold one key.
+    itself (differences 0, ratios 1), and `missing` and `means` hold one key. Under a `Pareto` objective
+    each tested front member gets its own report against the baseline (`champion_id` = that member).
 
     Attributes:
         objective: `Criteria.objective_value` per case, champion - baseline.

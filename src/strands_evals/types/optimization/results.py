@@ -15,8 +15,7 @@ class ProposalOutcome(BaseModel):
     """One proposal of one iteration.
 
     `number` is the display number (None for an invalid patch); `origin` is the proposing block's name
-    (`Candidate.origin`); `outcome` uses the same vocabulary as `Observation.outcome`; `objective` is the
-    objective it was observed with (`Observation.objective`).
+    (`Candidate.origin`); `objective` is the objective it was observed with (`Observation.objective`).
     """
 
     model_config = ConfigDict(frozen=True)

@@ -19,7 +19,8 @@ class TPE(Method):
     later refit doesn't re-value it. `observe` and `evidence` append to TPE's own list (replayed on
     resume); the study for a context is rebuilt from that list before each ask, and the sampler is
     reseeded from `f"{seed}:{iteration}:{redraw}:{context id}"` through sha256. `seed=None` uses the run
-    seed.
+    seed. Under a `Pareto` objective each study is multi-objective, one direction per objective, told
+    `objectives` instead of `objective`.
     """
 
     kinds: ClassVar[frozenset[ParamKind]] = frozenset({"int", "float", "one_of", "choice"})

@@ -51,6 +51,7 @@ from .scoring.objectives import (
     MetricTarget,
     Minimize,
     Objective,
+    Pareto,
     WeightedSum,
 )
 from .scoring.rewards import RewardFunction, RewardFunctionEvaluator, RewardResult
@@ -118,6 +119,7 @@ __all__ = [
     "PairedComparison",
     "ParamInfo",
     "ParamKind",
+    "Pareto",
     "Patch",
     "PickRule",
     "ProposalOutcome",

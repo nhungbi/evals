@@ -23,7 +23,8 @@ class FinalPick:
 
     Only a candidate meeting every constraint ships (no `unmet="closest"`). `rule` is `Mean()` or
     `LowerBound(q)` to ship cautiously; the search's ranking always uses `Mean()`. Read back from
-    `run.json` on resume (`from_config`), never passed again.
+    `run.json` on resume (`from_config`), never passed again. Under a `Pareto` objective up to
+    `max(finalists, 5)` front members go to validation.
     """
 
     finalists: int = 3
@@ -47,15 +48,20 @@ class FinalPick:
         raise NotImplementedError
 
 
-def choose_finalists(ranking: Sequence[str], baseline_id: str, n: int) -> list[str]:
+def choose_finalists(
+    ranking: Sequence[str], baseline_id: str, n: int, *, front: Sequence[str] | None = None
+) -> list[str]:
     """The first `n` of the search ranking, baseline excluded; fewer -> all of them; none -> `[]`.
 
-    Takes the ranked ids, not a `SelectionContext`, so this module doesn't import `selection/`.
+    Takes the ranked ids, not a `SelectionContext`, so this module doesn't import `selection/`. Under a
+    `Pareto` objective the first `n` of `front` instead; an empty front (nothing feasible on train) gives
+    `[]`, so the baseline ships.
 
     Args:
         ranking: Every eligible candidate in ranking order (feasible first, then by objective).
         baseline_id: Left out; it is always measured on validation anyway.
-        n: `FinalPick.finalists`.
+        n: `FinalPick.finalists`, or `max(finalists, 5)` under `Pareto`.
+        front: Under `Pareto`, `pareto_front` over the search assessments, in ranking order; None otherwise.
     """
     raise NotImplementedError
 
@@ -76,6 +82,8 @@ def pick(
 
     Feasible = eligible on validation and P(met) >= `criteria.feasibility` for every constraint (measured means
     without a fit). Ranked by objective resolved to a tenth of its sd; ties -> most trials, then earlier.
+    Under a `Pareto` objective the same champion (the validated front's highest-gain member) plus
+    `ValidationReport.front`.
 
     Args:
         baseline_id: The baseline.

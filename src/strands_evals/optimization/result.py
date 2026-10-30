@@ -63,7 +63,12 @@ class OptimizationResult:
         test: The champion against the baseline on test, report only: a negative `mean_diff` is possible
             and never changes what ships. None without test cases or when it couldn't be afforded
             (`test_reason` says which).
-        test_reason: Why `test` is None (the `test` event's reason); None when it ran.
+        test_reason: Why `test` is None (the `test` event's reason), or under `Pareto` which front members
+            the test report couldn't afford; None when everything ran.
+        front: Under a `Pareto` objective, the validated front (`validation.front`), champion first, each with
+            `diff()` and values, so a reviewer can apply another trade-off; `[]` otherwise.
+        front_test: Under a `Pareto` objective, each tested front member against the baseline on test
+            (`front_test[best.id]` is `test`); `{}` otherwise or when the test report was skipped.
         effects: `effects.json`: per metric and option from the search fit, or empty with the reason.
         stop_reason: Why the search stopped: `budget` (what's left after the end-phase reserves can't score
             one more candidate), `iterations` (the cap), `exhausted` (every block produced no candidates on
@@ -83,6 +88,8 @@ class OptimizationResult:
     validation: ValidationReport
     test: TestReport | None
     test_reason: str | None
+    front: list[CandidateView]
+    front_test: dict[str, TestReport]
     effects: dict[str, Any]
     iterations: list[IterationRecord]
     rollouts_spent: int
